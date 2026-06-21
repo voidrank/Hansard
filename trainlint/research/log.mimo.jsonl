@@ -1,0 +1,17 @@
+# Durable, append-only annotation log — the JUDGMENTS traces can't prove.
+# Harvested from sessions into git BEFORE compaction (see harvest.py). NEVER edited.
+# Seeded from the 2026-06 session reconstruction (over-DFS branches + walls).
+# fields: ts | kind (experiment|hypothesis|verdict|abandon|deadend|wall|trunk-check)
+#         direction | parent? | run? | delta? | trunk_ok? | note
+{"ts": "2026-05-25", "kind": "experiment", "direction": "loss-weights", "parent": "d3", "run": "d3v15", "delta": 0.05, "note": "调 speech_loss_weights 修症状1"}
+{"ts": "2026-06-01", "kind": "experiment", "direction": "loss-weights", "parent": "d3", "run": "d3v18", "delta": 0.005, "note": "再调权重,收益变小"}
+{"ts": "2026-06-10", "kind": "experiment", "direction": "loss-weights", "parent": "d3", "run": "d3v20", "delta": 0.0, "note": "又调权重,基本没动"}
+{"ts": "2026-06-14", "kind": "experiment", "direction": "loss-weights", "parent": "d3", "run": "d3v21s", "delta": 0.0, "note": "再调,平了"}
+{"ts": "2026-06-14", "kind": "wall", "direction": "loss-weights", "note": "机械音 / audio head 忽略 text 的 shortcut,blank text 反而升"}
+{"ts": "2026-06-16", "kind": "verdict", "direction": "loss-weights", "note": "真因是欠训(1.26 epoch)+ power=2.0 静默 bug,不是权重"}
+{"ts": "2026-06-12", "kind": "wall", "direction": "codec", "note": "推理静音:纯零编成 OOD 码 351"}
+{"ts": "2026-06-12", "kind": "experiment", "direction": "layout-chunk", "parent": "d3", "run": "d3v20", "delta": 0.0, "note": "parallel chunk 布局"}
+{"ts": "2026-06-14", "kind": "abandon", "direction": "layout-chunk", "note": "parallel 和 base 互斥设计不兼容,砍掉换 stream(正确回溯)"}
+{"ts": "2026-06-14", "kind": "experiment", "direction": "layout-stream", "parent": "d3", "run": "d3v21", "delta": 0.2, "note": "stream 布局,interleave 涌现"}
+{"ts": "2026-06-18", "kind": "experiment", "direction": "nofreeze", "parent": "d3v21s", "run": "dup_d3v21s_nofreeze", "delta": 0.1, "note": "解冻全量FT,音色提升(顶着'看着没用'推过去才对)"}
+{"ts": "2026-06-10", "kind": "wall", "direction": "inner-monologue", "note": "模型输出乱说 rambling,不连贯"}

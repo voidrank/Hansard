@@ -1,0 +1,9 @@
+# Knowledge library — indexed by the PROBLEM each entry solves, not by recency.
+# fields: id | title | problem | concepts[] | prereqs[] | match[] (wall keywords) | read(bool)
+# The surfacer matches a tree WALL against `match`; a hit = "now readable, given your frontier".
+{"id": "moshi-inner-monologue", "title": "Moshi — Inner Monologue (text+audio streams)", "problem": "audio token 比 text 多 ~50×,信号太散→输出乱说;用文本流锚定发音", "concepts": ["inner monologue", "text-audio interleave"], "prereqs": ["看到自己模型乱说/答非所问"], "match": ["乱说", "rambling", "off-topic", "答非所问", "incoherent"], "read": false}
+{"id": "delay-pattern", "title": "Delay pattern (MusicGen/AudioCraft)", "problem": "多码本帧内交错预测:预测码本k时已知k-1..1", "concepts": ["delay pattern", "RVQ codebook staggering"], "prereqs": ["要同时预测多码本"], "match": ["多码本", "codebook", "delay", "16 码", "并行预测"], "read": false}
+{"id": "rvq-encodec", "title": "RVQ depth tradeoff (Encodec/SoundStream)", "problem": "码本数的指数成本/收益:8≈95%,16≈99%但训练翻倍", "concepts": ["RVQ", "codebook count"], "prereqs": ["音质低、纠结用几个码本"], "match": ["音质", "几个码本", "codebook 数", "rvq"], "read": false}
+{"id": "frozen-codec-ctx", "title": "Frozen tokenizer — context-dependent quantization", "problem": "双向 encoder:同样零信号按上下文编成不同码(43 vs 351)", "concepts": ["context-dependent codes", "OOD padding"], "prereqs": ["debug 静音/OOD 码"], "match": ["351", "ood", "静音", "silence", "纯零"], "read": false}
+{"id": "streaming-causality", "title": "Streaming codec causality (non-causal leak)", "problem": "训练双向 encode / 部署因果 → 分布漂移 → 流式崩", "concepts": ["causal encoder", "streaming"], "prereqs": ["建了流式推理看它崩"], "match": ["流式", "streaming", "泄漏", "timing", "因果"], "read": false}
+{"id": "dual-stream-turntaking", "title": "Dual-stream turn-taking / mutual exclusion", "problem": "turn-taking 从数据结构涌现,不是架构约束", "concepts": ["mutual exclusion", "turn-taking"], "prereqs": ["看到两路一直同时出声"], "match": ["互斥", "turn-taking", "同时出声", "抢话", "barge"], "read": false}

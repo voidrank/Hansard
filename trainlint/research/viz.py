@@ -64,9 +64,11 @@ def knowledge_block(nodes, knowledge):
 
 
 def dot(nodes, knowledge):
-    L = ["digraph search {", '  rankdir=LR;',
-         '  node [shape=box, style="filled,rounded", fontname=Helvetica, fontsize=10];',
-         '  edge [fontname=Helvetica, fontsize=8];']
+    # portrait (top-down) + larger fonts + high dpi → legible on a phone screen
+    L = ["digraph search {",
+         '  graph [rankdir=TB, bgcolor=white, dpi=170, ranksep=0.5, nodesep=0.3, margin=0.2];',
+         '  node [shape=box, style="filled,rounded", fontname="Helvetica-Bold", fontsize=14, margin="0.12,0.07"];',
+         '  edge [fontname=Helvetica, fontsize=11];']
     for d, n in nodes.items():
         lbl = f"{d}\\n[{n['status']}] {n['spend']}run"
         if n["deltas"][-3:]:

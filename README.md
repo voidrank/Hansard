@@ -2,9 +2,9 @@
 
 ### It trained fine. That's the bug.
 
-**A linter for ML training — and for the AI agent doing it.** It catches the *silent*
-mistakes (the ones that don't crash, where loss keeps dropping and the model is quietly
-wrong) at the moment they happen — before they cost you a week of GPU.
+**A linter for AR-LLM and multimodal training — and for the AI agent doing it.** It catches
+the *silent* mistakes (the ones that don't crash, where loss keeps dropping and the model is
+quietly wrong) at the moment they happen — before they cost you a week of GPU.
 
 > You lint your code. Your coding agent is now writing your *training* code. Lint that too.
 
@@ -45,17 +45,19 @@ permission decision, never by crashing).
 Each rule is a **principle that survives a project change**; the project-specific values
 (paths, library calls, magic numbers) live in one swappable file.
 
-| principle | a concrete instance |
+| principle | what it looks like |
 |---|---|
-| preprocessing must match the frozen component's training config | a `MelSpectrogram` whose `power` silently defaults wrong → 1.8× worse |
-| inference must reproduce training's masks/shifts bit-for-bit | a dropped AR off-by-one → the model echoes its input forever |
-| no-op / padding regions are OOD under a frozen tokenizer | `np.zeros` → garbage codes that become ~40% of your targets |
-| training reads must be on fast, reliable storage | a networked FS that corrupts under concurrent load → silent crash |
-| a demo must run end-to-end through the model | not a codec round-trip that just "sounds like the answer" |
-| config from many sources silently overrides | print the *effective* scheduler/LR, don't trust the flag |
+| preprocessing must match the frozen component's training config | an input transform that silently differs from how the frozen encoder was trained → out-of-distribution inputs |
+| inference must reproduce training's masks/shifts bit-for-bit | a dropped autoregressive off-by-one → the model learns to echo its input |
+| no-op / padding regions are OOD under a frozen tokenizer | padding the tokenizer never saw → it maps to out-of-distribution codes that quietly become a chunk of your targets |
+| training reads must be on fast, reliable storage | a networked filesystem that corrupts under concurrent load → a silent crash mid-training |
+| an eval/demo must run end-to-end through the model | a proxy that looks right no matter how broken the model is |
+| config from many sources silently overrides | print the *effective* value, don't trust the flag you wrote |
+| a weak modality learns a shortcut and ignores the strong condition | high teacher-forced accuracy, garbage free-running generation |
 
-…20+ rules. Swap the example facts for your project's and the same rules apply — the
-bundled example happens to be an audio model, but nothing about the rules is.
+…20+ rules. Each is a transferable principle for AR-LLM / multimodal training; your project's
+specifics (paths, calls, numbers) live in one swappable facts file — write it once, the rules
+don't change.
 
 ## Two layers
 

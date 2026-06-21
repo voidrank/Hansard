@@ -23,21 +23,42 @@ moment it's written.**
 
 ![the frustrating loop vs. catching it at write time](docs/the-loop.png)
 
-## How it works — a doorman, four moves
+## How it works — it's a bouncer at the door
 
-On every message / agent tool-use it does exactly one of four things, and only the last two
-ever reach you:
+Every time the agent goes to do something — change a config, launch a run, touch the model
+code — it has to walk past one bouncer. The bouncer has seen runs blow up before. He sizes up
+the move and does one of four things:
 
-| move | when | who sees it |
-|---|---|---|
-| **stay silent** | nothing to flag | nobody |
-| **coach the agent** | a quiet reminder it should fold in | the agent only |
-| **escalate to you** | "only a human can verify this — look at this diff" | you |
-| **bounce it** | "this is a known mistake — redo it" | the agent only (you're undisturbed) |
+🚫 **"Nope, not this one."** — He recognizes a move that's *already* sunk a run before: a
+known-bad setting, the kind of silent misconfig that doesn't crash but quietly poisons the
+output. He doesn't lecture, he doesn't ping you — he just turns it around at the door and says
+*redo it*. A known disaster never makes it inside, and **your phone stays quiet**, because why
+would you need to rule on something he's already sure about?
 
-**Soft by default** (it hints, it never restricts the agent's exploration) and
-**fail-open** (a bug in the linter can never lock you out — it blocks a wrong action with a
-permission decision, never by crashing).
+🙋 **"Hey — you'll want to see this."** — This is the only move that taps *you* on the
+shoulder. Someone changed something no machine can check — a tweak to how the model trains or
+sees its input, where there's no test that says right or wrong, but if it *is* wrong it eats a
+week. So he hands you the diff: *you* look. Because here, your eyes are the only instrument that
+works.
+
+👈 **"Psst — double-check that."** — Not sure, not fatal, just worth a word. He leans over and
+mutters it to the agent, who can fold it in or shrug it off. You never even hear it happen.
+
+😶 **(says nothing)** — 99% of the time. Nothing's off, the door's open, the agent walks
+through.
+
+The trick is what *doesn't* reach you. Not "everything suspicious" — only that one sliver where
+no machine can check it and no quiet word can fix it. **That's** why you don't end up muting
+him: he only ever bugs you when you're genuinely the last line of defense.
+
+And two house rules keep him safe to leave on:
+
+- **He bounces a move, never your direction.** Even a "nope" stops *one action* — your overall
+  approach is still yours. (A plateau is often right before the breakthrough; he won't prune
+  your search.)
+- **He can't ever lock you out.** He turns a bad move away with a polite "denied," never by
+  knocking the door off its hinges — a bug in the bouncer is always safer than the bug he's
+  there to stop.
 
 ## What it catches — general principles, not one project's trivia
 

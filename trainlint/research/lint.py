@@ -20,9 +20,9 @@ def run(name=None):
     nodes = tree.build_tree(tree.load_events(name, facts), facts)
     know = tree._load_jsonl(Path(__file__).resolve().parent / f"knowledge.{name}.jsonl")
     out = [f"# research-lint ({name}) — {len(nodes)} directions reconstructed", "",
-           "## 方向性(对内·只照形状)"]
+           "## directionality (inward · shape only)"]
     out += ["- " + h for h in governor.report(nodes, facts)]
-    out += ["", "## 就绪度(对外·只提示该读啥)"]
+    out += ["", "## readiness (outward · just hints what to read)"]
     out += ["- " + h for h in surfacer.report(nodes, know)]
     return "\n".join(out)
 

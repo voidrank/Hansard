@@ -21,9 +21,10 @@ def report(nodes, knowledge):
             keys = k.get("match", [])
             if any(str(kk).lower() in w.lower() for kk in keys):
                 hints.append(
-                    f"〔research-lint·就绪〕墙「{w}」(@{direction}) ↔ 「{k['title']}」"
-                    f"——讲的就是 {k.get('problem', '')};前置 {k.get('prereqs', [])} 你大概已具备,"
-                    f"也许现在读得懂(早读=cargo-cult)。")
+                    f"[research-lint:readiness] wall \"{w}\" (@{direction}) <-> \"{k['title']}\" "
+                    f"— it's about exactly {k.get('problem', '')}; prereqs {k.get('prereqs', [])} "
+                    f"you likely already have, so it may be readable NOW (reading earlier = cargo-cult).")
     if not hints:
-        hints.append("〔research-lint·就绪〕当前的墙暂未匹配到知识库条目(撞到新墙时再看)。")
+        hints.append("[research-lint:readiness] no current wall matches a knowledge-library entry "
+                     "(revisit when you hit a new wall).")
     return hints

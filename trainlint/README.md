@@ -3,7 +3,7 @@
 A **soft guardrail harness** for AR-LLM multimodal training, packaged as a Claude Code plugin.
 
 A "doorman" between you and the coding agent. On every message / agent tool-use it
-does one of four things — **放过 / 悄悄提醒 agent / 拦下并提醒你 / 直接打回 agent** —
+does one of four things — **let it pass / quietly remind the agent / stop it and alert you / bounce the agent outright** —
 to stop the *silent* failures that wasted weeks in a real Duplex-MiMo saga
 (power=2.0 mel / OOD silence codes / dropped AR-shift / DeepSpeed scheduler override
 / fake demos / serial guessing …).

@@ -44,10 +44,10 @@ def decide(data):
     qz = quiz.ask(data, classifier.haystack(data))
     if qz:
         q = qz[0]
-        ctx = ("〔背景:" + q["context"] + "〕") if q.get("context") else ""
+        ctx = ("[context: " + q["context"] + "] ") if q.get("context") else ""
         items = items + [{"level": "escalate",
-                          "message": "🧠 知识门(答得上来再继续)" + ctx + q["q"]
-                          + "(别答成:" + q.get("naive", "") + ")"}]
+                          "message": "🧠 Knowledge gate (answer before you continue) " + ctx + q["q"]
+                          + " (don't answer: " + q.get("naive", "") + ")"}]
 
     if not items:
         return None
@@ -74,7 +74,7 @@ def decide(data):
 
     surfaced = escalates + (rejects if not is_tool else [])
     if surfaced:
-        out["systemMessage"] = "⚠️ 需要你确认:\n" + "\n".join(
+        out["systemMessage"] = "⚠️ Needs your check:\n" + "\n".join(
             "• " + i["message"] for i in surfaced)
         out["hookSpecificOutput"]["additionalContext"] = "\n\n".join(
             i["message"] for i in surfaced + coaches)

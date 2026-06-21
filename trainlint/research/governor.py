@@ -21,20 +21,22 @@ def report(nodes, facts):
         if n["status"] == "open":          # only a wall, no experiments yet — nothing to shape
             continue
         deltas = n["deltas"][-K:]
-        line = (f"〔research-lint·方向性〕[{n['direction']}] 状态={n['status']} · 跑了{n['spend']}次"
-                + (f" · 近{len(deltas)}次增益{deltas}" if deltas else "")
-                + (f" · 撞墙{n['walls']}" if n["walls"] else ""))
+        line = (f"[research-lint:directionality] [{n['direction']}] status={n['status']} · {n['spend']} run(s)"
+                + (f" · last {len(deltas)} gains {deltas}" if deltas else "")
+                + (f" · walls {n['walls']}" if n["walls"] else ""))
         if n["status"] == "stalled":
             missing = [c for c in trunk_required if c not in n["trunk"]]
             if missing:
-                line += (f" · ⚠平了,但树干检查没记录{missing}——"
-                         f"别在可能被污染的树干上判这支死(根因也许不在这条枝)")
+                line += (f" · WARN it flattened, but trunk-checks not recorded {missing} — "
+                         f"don't sentence this branch to death on a possibly-contaminated trunk "
+                         f"(the root cause may not be on this branch)")
         if n["siblings"]:
-            line += f" · 同层已探{n['siblings']}"
+            line += f" · siblings explored {n['siblings']}"
         hints.append(line)
 
     unexplored = sorted(candidates - explored)
     if unexplored:
-        hints.append(f"〔research-lint·方向性〕未探候选方向:{unexplored}")
-    hints.append("(以上是搜索现状,判断在你——lint 只照形状,不替你剪枝。)")
+        hints.append(f"[research-lint:directionality] unexplored candidate moves: {unexplored}")
+    hints.append("(This is the current search shape; the judgment is yours — the lint only "
+                 "shows the shape, it never prunes for you.)")
     return hints

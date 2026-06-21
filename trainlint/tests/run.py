@@ -78,7 +78,7 @@ def main():
     total += 1
     msgs = {x["message"] for x in classifier.classify(
         {"hook_event_name": "UserPromptSubmit", "prompt": "重新train吧"})}
-    if "MOCK-EXTRA" in msgs and any("分布" in m for m in msgs):
+    if "MOCK-EXTRA" in msgs and any("distribution" in m for m in msgs):
         print("ok    [model   ] backend merges with regex floor")
     else:
         fails += 1

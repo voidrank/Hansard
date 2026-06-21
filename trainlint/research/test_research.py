@@ -30,10 +30,10 @@ def main():
     check(nodes["nofreeze"]["status"] == "deepening", "nofreeze is DEEPENING")
 
     gov = "\n".join(governor.report(nodes, facts))
-    check("树干检查没记录" in gov and "loss-weights" in gov,
+    check("trunk-check" in gov and "loss-weights" in gov,
           "governor warns 'check trunk before judging stalled branch dead'")
-    prescribes = any(p in gov for p in ("建议放弃", "该放弃", "应该放弃", "放弃这", "停掉这"))
-    check("未探候选方向" in gov and not prescribes,
+    prescribes = any(p in gov for p in ("recommend abandon", "should abandon", "give up", "abandon this branch"))
+    check("unexplored" in gov and not prescribes,
           "governor surfaces unexplored moves and never PRESCRIBES abandonment (lint, not prune)")
 
     know = tree._load_jsonl(Path(__file__).resolve().parent / "knowledge.mimo.jsonl")

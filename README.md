@@ -1,26 +1,95 @@
 # Trainlint
 
-A local [Claude Code plugin marketplace](https://code.claude.com/docs/en/plugin-marketplaces).
+### It trained fine. That's the bug.
 
-## Plugin: `trainlint`
+**A linter for ML training — and for the AI agent doing it.** It catches the *silent*
+mistakes (the ones that don't crash, where loss keeps dropping and the model is quietly
+wrong) at the moment they happen — before they cost you a week of GPU.
 
-A **soft guardrail harness** for AR-LLM multimodal training — a "doorman" between
-you and the coding agent that, at high-stakes moments, stays silent / quietly
-reminds the agent / asks you to check / bounces a bad action. Built from a real
-Duplex-MiMo debugging saga, but the rules are general; project specifics live in a
-swappable `project.<name>.json`.
+> You lint your code. Your coding agent is now writing your *training* code. Lint that too.
 
-See [`trainlint/README.md`](trainlint/README.md) for usage and
-[`trainlint/DESIGN.md`](trainlint/DESIGN.md) for the design philosophy
-(read DESIGN.md before adding rules).
+---
+
+## The problem it solves
+
+Training fails loud rarely and silent often. No exception, the loss curve looks great,
+nothing crashes — and the model is broken: preprocessing that doesn't match a frozen
+component, a dropped autoregressive shift, padding that encodes out-of-distribution, a
+scheduler silently overridden, a "demo" that never actually went through the model. You
+find out days or weeks later.
+
+And the AI agent editing your training code makes these mistakes **confidently and
+plausibly**, so you don't catch them either.
+
+A compiler catches type errors. A *linter* catches the plausible-looking ones. **Trainlint
+is that linter for training** — for you and for the agent.
+
+## How it works — a doorman, four moves
+
+On every message / agent tool-use it does exactly one of four things, and only the last two
+ever reach you:
+
+| move | when | who sees it |
+|---|---|---|
+| **stay silent** | nothing to flag | nobody |
+| **coach the agent** | a quiet reminder it should fold in | the agent only |
+| **escalate to you** | "only a human can verify this — look at this diff" | you |
+| **bounce it** | "this is a known mistake — redo it" | the agent only (you're undisturbed) |
+
+**Soft by default** (it hints, it never restricts the agent's exploration) and
+**fail-open** (a bug in the linter can never lock you out — it blocks a wrong action with a
+permission decision, never by crashing).
+
+## What it catches — general principles, not one project's trivia
+
+Each rule is a **principle that survives a project change**; the project-specific values
+(paths, library calls, magic numbers) live in one swappable file.
+
+| principle | a concrete instance |
+|---|---|
+| preprocessing must match the frozen component's training config | a `MelSpectrogram` whose `power` silently defaults wrong → 1.8× worse |
+| inference must reproduce training's masks/shifts bit-for-bit | a dropped AR off-by-one → the model echoes its input forever |
+| no-op / padding regions are OOD under a frozen tokenizer | `np.zeros` → garbage codes that become ~40% of your targets |
+| training reads must be on fast, reliable storage | a networked FS that corrupts under concurrent load → silent crash |
+| a demo must run end-to-end through the model | not a codec round-trip that just "sounds like the answer" |
+| config from many sources silently overrides | print the *effective* scheduler/LR, don't trust the flag |
+
+…20+ rules. Swap the example facts for your project's and the same rules apply — the
+bundled example happens to be an audio model, but nothing about the rules is.
+
+## Two layers
+
+1. **Action doorman** — don't make a single wrong move (the rules above).
+2. **Research-lint** — don't burn weeks going in circles. It reconstructs the *search tree*
+   of directions you've tried (from your run names + a durable, compaction-proof log), shows
+   when you've over-tuned one branch past diminishing returns, and surfaces the paper that
+   explains the wall you just hit — *just-in-time, not by recency* (reading it earlier is
+   cargo-cult). It only ever hints; it never prunes your search for you.
+
+![an example search tree](docs/search-tree.png)
 
 ## Install
 
-See **[INSTALL.md](INSTALL.md)** — Form A (settings.json hooks, single machine) or
-Form B (plugin via marketplace), plus verification and how to port to another project.
+```
+/plugin marketplace add voidrank/Trainlint
+/plugin install trainlint@trainlint
+```
 
-## Test
+Pure Python standard library — **zero dependencies**. Then it just runs. See
+[INSTALL.md](INSTALL.md) for a single-machine (no-plugin) setup.
+
+## Use it on your project
 
 ```
-cd trainlint && python3 tests/run.py
+/trainlint:init <name>      # scaffold the one facts file you fill in — the rules don't change
+/trainlint:viz              # see your search tree
+/trainlint:lint             # directionality + "read this now" hints
+/trainlint:quiz             # get drilled on a transferable principle until you've got it
 ```
+
+## Why it stays general
+
+The **mechanism is fixed**, the **principles are portable**, and the **project facts are a
+swappable file**. Porting to another project = write one `project.<name>.json`, the rules
+unchanged. Read [DESIGN.md](trainlint/DESIGN.md) before adding rules — it's the meta-knowledge
+that keeps the principles from drifting as the rule list grows.

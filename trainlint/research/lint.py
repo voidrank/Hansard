@@ -2,8 +2,12 @@
 """Research-lint entrypoint — rebuild the frontier tree from traces, run the two
 read-only lints, print SHAPE hints. Coach-only: shows the search shape, never prescribes.
 
-Run on a schedule (cron / a Claude Code routine) or on demand:
-    python3 lint.py [project]
+  python3 lint.py [project]            # full report (on demand)
+  python3 lint.py --brief [project]    # SessionStart hook: only actionable hints, else silent
+
+It runs as an OS subprocess (a subagent off the main trajectory); only this distilled
+text is appended to the conversation, never the check machinery. For the full picture,
+use viz.py.
 """
 import sys
 from pathlib import Path
@@ -14,11 +18,16 @@ import governor    # noqa: E402
 import surfacer    # noqa: E402
 
 
-def run(name=None):
+def _load(name):
     name = tree._active(name)
     facts = tree.load_facts(name)
     nodes = tree.build_tree(tree.load_events(name, facts), facts)
     know = tree._load_jsonl(Path(__file__).resolve().parent / f"knowledge.{name}.jsonl")
+    return name, facts, nodes, know
+
+
+def run(name=None):
+    name, facts, nodes, know = _load(name)
     out = [f"# research-lint ({name}) — {len(nodes)} directions reconstructed", "",
            "## directionality (inward · shape only)"]
     out += ["- " + h for h in governor.report(nodes, facts)]
@@ -27,11 +36,38 @@ def run(name=None):
     return "\n".join(out)
 
 
+def brief(name=None):
+    """Only the ACTIONABLE bits — stalled branches + ready-to-read papers. Empty string
+    when there's nothing to say (so SessionStart stays silent unless there's a real hint)."""
+    name, facts, nodes, know = _load(name)
+    lines = []
+    for n in sorted(nodes.values(), key=lambda x: -x["spend"]):
+        if n["status"] == "stalled":
+            lines.append(f"'{n['direction']}' stalled ({n['spend']} runs, flat) — check the trunk first")
+    seen = set()
+    for n in nodes.values():
+        for w in n.get("walls", []):
+            for k in know:
+                if k.get("read") or k["id"] in seen:
+                    continue
+                if any(str(m).lower() in w.lower() for m in k.get("match", [])):
+                    seen.add(k["id"])
+                    lines.append(f"now readable: {k['title']} (wall: {w[:34]})")
+    if not lines:
+        return ""
+    return (f"[research-lint:{name}] " + " | ".join(lines)
+            + "  (hints only — full picture: research/viz.py)")
+
+
 if __name__ == "__main__":
-    # Safe for use as a SessionStart hook: any error → print nothing, exit 0.
+    # Safe as a SessionStart hook: any error → print nothing, exit 0.
     try:
-        arg = sys.argv[1] if (len(sys.argv) > 1 and not sys.argv[1].startswith("-")) else None
-        print(run(arg))
+        args = sys.argv[1:]
+        is_brief = "--brief" in args
+        proj = next((a for a in args if not a.startswith("-")), None)
+        text = brief(proj) if is_brief else run(proj)
+        if text:
+            print(text)
     except Exception:
         pass
     sys.exit(0)

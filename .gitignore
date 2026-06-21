@@ -5,3 +5,5 @@ __pycache__/
 .active-project
 .quiz-gate
 project.demo.json
+# generated visualizations
+trainlint/research/viz/

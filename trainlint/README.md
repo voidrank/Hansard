@@ -67,6 +67,16 @@ trainlint/
 3. Fact → `project.<name>.json`. Add a `tests/cases.jsonl` case.
 4. `python3 tests/run.py` (must pass).
 
+## Commands (slash commands, when installed as a plugin)
+
+| command | what it does |
+|---|---|
+| `/trainlint:viz [project]` | visualize the research search tree + knowledge-readiness edges (ASCII + a rendered PNG) |
+| `/trainlint:lint [project]` | run the research-lint: reconstruct the tree, surface directionality + readiness hints (read-only) |
+| `/trainlint:quiz [id\|topic]` | pull one quiz question, withhold the answer, then grade you against the underlying principle |
+
+(Commands load only when Trainlint is installed via `/plugin`, not via the settings.json hooks form.)
+
 ## Install
 
 See **[../INSTALL.md](../INSTALL.md)** — Form A (settings.json hooks) or Form B

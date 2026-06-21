@@ -71,6 +71,18 @@ don't change.
 
 ## Why it's designed this way
 
+**Why a linter at all — not a prompt, a skill, or a workflow?** The failure mode dictates the
+form. These bugs are *silent, continuous, and you don't know you're making them.* A static prompt
+(CLAUDE.md) is persuasion you can ignore — always-on noise, blind to the actual diff, and it can't
+stop anything. A skill or a workflow has to be *invoked* — but you'd never invoke a "check my
+training code" step at the exact moment you drop an off-by-one, and a multi-agent workflow on every
+edit is far too heavy. Only something **ambient** (fires on every action, unbidden), **at the
+moment**, **action-aware** (sees the diff), and **able to actually stop the bad one** catches a
+mistake you didn't know you were making — that's a linter. (Trainlint still uses commands for the
+deliberate parts — `viz`/`lint`/`quiz`/`init` — and ships its rules just-in-time, not always-on.)
+
+And given it's a linter:
+
 - **A linter, not a gate.** Research is non-monotonic — a plateau often comes right before a
   breakthrough — so Trainlint *hints*; it never prunes your search or restricts the agent's
   exploration. It corrects the biases of unsupervised work (sunk cost, cargo-cult, blaming

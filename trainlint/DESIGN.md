@@ -37,6 +37,42 @@ error, then no doorman is needed—the compiler/exception will shout on its own.
 
 ---
 
+## 1b. Why a linter — not a prompt, a skill, or a workflow
+
+The *form* was forced by the failure mode, not chosen. These bugs are **silent, continuous, and
+you don't know you're making them.** To catch a mistake with those three properties, the tool
+must be all of: **(1) ambient** (fires on every action, without being asked), **(2) at the moment**
+the action happens, **(3) action-aware** (it sees the actual diff/command), **(4) able to verify
+deterministically**, and **(5) able to actually stop the bad one — while never being able to lock
+you out.** Only a hook-based linter is all five. Each alternative fails on the properties of *this*
+failure mode:
+
+- **Guidance / a static prompt (CLAUDE.md).** It is *persuasion you can ignore* — the model sees
+  the rules and, especially at large context, drops them. It is always-on (noise + token cost: 20+
+  rules become a wall the model skims, instead of the one relevant rule at the right moment). It is
+  **blind** to the specific diff. And it can **enforce nothing.** A hook delivers the *same
+  knowledge* but just-in-time, action-aware, and able to deny — so Trainlint keeps the rules as
+  data and ships them through hooks, *just-in-time, not always-on*.
+- **A skill / command.** It must be **invoked.** But the whole problem is that *you don't know
+  you're about to make the mistake* — you'd never invoke a "check my training code" step at the
+  exact moment you drop an off-by-one. A silent mistake has no trigger to invoke anything; a linter
+  must watch *ambiently*, unbidden. (Where on-demand DOES fit — visualize, quiz, init — Trainlint
+  uses commands. Hooks for the watching, commands for the deliberate.)
+- **A workflow (multi-agent orchestration).** It is **heavyweight, deliberate, batch**: you open it
+  explicitly for a big task, it spends many agents/tokens, runs to the end, and returns a snapshot.
+  You can't run that on *every* edit — too slow, too expensive, it shreds the flow. And a workflow
+  is itself an agent *reasoning*, so its work is heavy and lands in the main trajectory; the
+  linter's check is off-thread, deterministic-first, and only the one-line hint surfaces. A workflow
+  is a fine **complement** (an occasional deep audit), but the wrong tool for a per-action guard.
+
+**One line:** a prompt can't enforce and gets ignored; a skill or workflow must be invoked, but you
+don't know to invoke them — and both are too heavy and blind to the actual action. The only form
+that catches *a mistake you didn't know you were making, at the instant you make it, cheaply, on
+every action, and can actually stop it* is a linter. The form is dictated by the failure mode, not
+selected from a menu.
+
+---
+
 ## 2. Core principle: route every decision to the party that can actually judge it
 
 This is the soul of the entire design. It is not "remind the agent at the right moment," but **sort by verifiability**:

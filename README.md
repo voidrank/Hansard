@@ -2,9 +2,9 @@
 
 ### It trained fine. That's the bug.
 
-**A linter for AR-LLM and multimodal training — and for the AI agent doing it.** It catches
-the *silent* mistakes (the ones that don't crash, where loss keeps dropping and the model is
-quietly wrong) at the moment they happen — before they cost you a week of GPU.
+**A linter for AI/ML training — and for the AI agent doing it.** It catches the *silent*
+mistakes (the ones that don't crash, where loss keeps dropping and the model is quietly
+wrong) at the moment they happen — before they cost you a week of GPU.
 
 > You lint your code. Your coding agent is now writing your *training* code. Lint that too.
 
@@ -54,9 +54,9 @@ Each rule is a **principle that survives a project change**; the project-specifi
 | config from many sources silently overrides | print the *effective* value, don't trust the flag you wrote |
 | a weak modality learns a shortcut and ignores the strong condition | high teacher-forced accuracy, garbage free-running generation |
 
-…20+ rules. Each is a transferable principle for AR-LLM / multimodal training; your project's
-specifics (paths, calls, numbers) live in one swappable facts file — write it once, the rules
-don't change.
+…20+ rules. Each is a transferable principle for AI/ML training; your project's specifics
+(paths, calls, numbers) live in one swappable facts file — write it once, the rules don't
+change.
 
 ## Two layers
 

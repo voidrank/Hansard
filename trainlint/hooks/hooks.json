@@ -3,7 +3,8 @@
     "UserPromptSubmit": [
       {
         "hooks": [
-          { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/router.py\"" }
+          { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/router.py\"" },
+          { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/research/flow.py\"" }
         ]
       }
     ],
@@ -32,7 +33,7 @@
     "SessionStart": [
       {
         "hooks": [
-          { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/research/lint.py\" --brief" }
+          { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/research/flow.py\"" }
         ]
       }
     ]

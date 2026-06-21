@@ -5,5 +5,6 @@ __pycache__/
 .active-project
 .quiz-gate
 project.demo.json
-# generated visualizations
+# generated visualizations + project-flow state markers
 trainlint/research/viz/
+trainlint/research/.state/

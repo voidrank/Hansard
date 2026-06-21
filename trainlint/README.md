@@ -71,11 +71,24 @@ trainlint/
 
 | command | what it does |
 |---|---|
-| `/trainlint:viz [project]` | visualize the research search tree + knowledge-readiness edges (ASCII + a rendered PNG) |
+| `/trainlint:init <name>` | scaffold a NEW project (template facts/knowledge/log/goal + set it active) |
+| `/trainlint:viz [project]` | visualize the research search tree + knowledge-readiness edges (ASCII + a rendered PNG, phone-friendly) |
 | `/trainlint:lint [project]` | run the research-lint: reconstruct the tree, surface directionality + readiness hints (read-only) |
-| `/trainlint:quiz [id\|topic]` | pull one quiz question, withhold the answer, then grade you against the underlying principle |
+| `/trainlint:quiz [id\|topic]` | pose one question, grade you against the principle; if you miss it, drills you with more |
 
 (Commands load only when Trainlint is installed via `/plugin`, not via the settings.json hooks form.)
+
+## Project flow (automatic, per project — never tied to a session)
+
+`research/flow.py` runs on the lifecycle hooks and anchors everything to the **project**
+(the `.active-project` name), to work events, and to each turn — *not* to session boundaries
+(a session may never end):
+
+- **context** — `SessionStart` injects a project briefing (search-tree state + goal); re-fires
+  after each compaction, so context is rebuilt whenever it's wiped.
+- **hint** — every `UserPromptSubmit` appends the one-line lint hint (deduped — only when it changes).
+- **viz** — when the reconstructed tree *changes*, the agent is nudged to render + send the picture.
+- **quiz** — once per project (kickoff), a soft adaptive quiz; harvest runs on `PreCompact`/`SessionEnd`.
 
 ## Install
 

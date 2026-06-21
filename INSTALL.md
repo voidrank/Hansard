@@ -1,33 +1,52 @@
 # Installing Trainlint
 
-Two ways to install. **Form A** (settings.json hooks) is the lightest and works on a
-single machine without the plugin system. **Form B** (plugin) is for distribution and
-requires a normal Claude Code session (`/plugin` is unavailable over Remote Control).
+## Quickest — install from the marketplace (two lines)
+
+Trainlint's repo *is* a Claude Code plugin marketplace, so once it's public anyone can:
+
+```
+/plugin marketplace add voidrank/Trainlint
+/plugin install trainlint@trainlint
+/reload-plugins
+```
+
+That's it — no clone, no editing `settings.json`. The plugin ships **both layers**: the
+action doorman (`UserPromptSubmit`/`PreToolUse`) *and* the research lint
+(`SessionStart`→lint, `PreCompact`/`SessionEnd`→harvest).
+
+> Needs a normal Claude Code session (`/plugin` is unavailable over Remote Control).
+
+## Even simpler — once listed in the official community directory
+
+If Trainlint is accepted into Anthropic's built-in `claude-plugins-community` marketplace
+(submit at <https://platform.claude.com/plugins/submit>), there's nothing to add — it's
+already available to every Claude Code user:
+
+```
+/plugin install trainlint@claude-plugins-community
+```
 
 ## Requirements
 
-The action layer and the research layer are **pure Python standard library — zero
-dependencies**. The only optional extra is the opt-in small-model classifier, which
-needs `pip install anthropic` + `ANTHROPIC_API_KEY` (without it, it falls back to the
-regex floor — no effect on anything else).
-
-```bash
-git clone git@github.com:voidrank/Trainlint.git ~/Trainlint
-```
+Pure Python **standard library — zero dependencies**. The only optional extra is the
+opt-in small-model classifier: `pip install anthropic` + `ANTHROPIC_API_KEY` (without it
+it falls back to the regex floor; nothing else is affected).
 
 ---
 
-## Form A — settings.json (single machine, lightest)
+## Form A — settings.json hooks (advanced: Remote Control, or no plugin system)
 
-Route the hooks through a **stable symlink** so that later moving/renaming the repo
-never risks a lockout (see the footgun at the bottom):
+Use this only when `/plugin` isn't available (e.g. Remote Control) or you don't want the
+plugin system. Route through a **stable symlink** so moving/renaming later can't lock you
+out (see the footgun):
 
 ```bash
+git clone git@github.com:voidrank/Trainlint.git ~/Trainlint
 ln -sfn ~/Trainlint/trainlint ~/trainlint
 ```
 
-Add this to the `hooks` block of `~/.claude/settings.json` (use **absolute paths** —
-`~` may not expand inside settings.json; replace `<user>` with your username):
+Add to the `hooks` block of `~/.claude/settings.json` (use **absolute paths** — `~` may
+not expand there; replace `<user>`):
 
 ```json
 "hooks": {
@@ -44,26 +63,8 @@ Add this to the `hooks` block of `~/.claude/settings.json` (use **absolute paths
 }
 ```
 
-- `UserPromptSubmit` + `PreToolUse` → the **action doorman** (silent/coach/escalate/reject).
-- `PreCompact` + `SessionEnd` → **harvest** research judgments into the durable log
-  before the session is compacted/deleted.
-- `SessionStart` → the **research-lint** surfaces the current search-shape each session.
-
-> Using Form A and Form B together double-injects — after installing the plugin (B),
+> Using Form A and the plugin together double-injects — after installing the plugin,
 > remove this `hooks` block.
-
-## Form B — plugin (for distribution)
-
-The repo root is a marketplace (`.claude-plugin/marketplace.json`); the plugin is the
-`trainlint/` subdir. In a normal Claude Code session:
-
-```
-/plugin marketplace add ~/Trainlint
-/plugin install trainlint@trainlint
-/reload-plugins
-```
-
-(Both the marketplace and the plugin are named `trainlint`.)
 
 ---
 
@@ -72,49 +73,34 @@ The repo root is a marketplace (`.claude-plugin/marketplace.json`); the plugin i
 ```bash
 cd ~/Trainlint/trainlint && python3 tests/run.py              # 21/21
 cd ~/Trainlint/trainlint/research && python3 test_research.py # 9/9
-
-# action layer smoke test (should print a training checklist as additionalContext):
-echo '{"hook_event_name":"UserPromptSubmit","prompt":"重新train吧"}' | python3 ~/trainlint/hooks/router.py
-
-# research lint smoke test (should print the reconstructed search shape):
-python3 ~/trainlint/research/lint.py mimo
 ```
 
 ## Opt-in knobs (default off)
 
-- `HARNESS_MODEL=1` (+ `ANTHROPIC_API_KEY`) — small-model semantic recall booster (a
-  Haiku selector over the vetted rule catalog; it never invents advice).
+- `HARNESS_MODEL=1` (+ `ANTHROPIC_API_KEY`) — small-model semantic recall booster (a Haiku
+  selector over the vetted rule catalog; it never invents advice).
 - `HARNESS_QUIZ=1` or a `.quiz-gate` file — surface a relevant knowledge question at
   high-stakes moments (never blocks).
 
----
-
 ## Use it on another project (not MiMo)
 
-The default project is `mimo`. Point it at a new one:
+Default project is `mimo`. Point it at a new one:
 
 ```bash
 echo myproj > ~/Trainlint/trainlint/.active-project   # or: export HARNESS_PROJECT=myproj
 ```
 
-Then write the facts (the mechanism is unchanged — you only swap facts):
-
-- `trainlint/project.myproj.json` — action-rule facts (bad-storage regex, locked
-  configs, preprocessing traps, reference impl, examples).
-- `trainlint/research/facts.myproj.json` — research facts (thresholds, `runs_glob`,
-  `direction_regex`, trunk-checks, candidate moves).
-- `trainlint/research/knowledge.myproj.jsonl` — papers/refs indexed by the problem they solve.
-- `trainlint/research/log.myproj.jsonl` — start it empty (harvest fills it).
-
-See `trainlint/DESIGN.md` §10 for the full porting guide.
+Then write the facts (mechanism unchanged — you only swap facts):
+`trainlint/project.myproj.json` (action-rule facts), `trainlint/research/facts.myproj.json`,
+`trainlint/research/knowledge.myproj.jsonl`, and an empty `trainlint/research/log.myproj.jsonl`.
+See `trainlint/DESIGN.md` §10.
 
 ---
 
-## ⚠️ Footgun (we got locked out once)
+## ⚠️ Footgun (Form A only)
 
-Never move/delete the script a settings.json hook points at without first making the
-new path valid. A missing script makes `python3` exit 2, which Claude Code treats as a
-**block** → every Bash/Edit/Write (including subagents) is denied, unrecoverable from
-inside the session (recover only from a shell outside Claude Code). Order:
-**new path exists → change settings → remove old.** Routing Form A through the stable
-symlink `~/trainlint` avoids this entirely — future moves just re-point the symlink.
+Never move/delete the script a settings.json hook points at without first making the new
+path valid. A missing script makes `python3` exit 2, which Claude Code treats as a
+**block** → every Bash/Edit/Write (incl. subagents) is denied, unrecoverable from inside
+the session. Order: **new path exists → change settings → remove old.** Routing through the
+stable symlink `~/trainlint` avoids this — future moves just re-point the symlink.

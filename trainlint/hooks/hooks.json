@@ -14,6 +14,27 @@
           { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/router.py\"" }
         ]
       }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/research/harvest.py\"" }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/research/harvest.py\"" }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/research/lint.py\"" }
+        ]
+      }
     ]
   }
 }

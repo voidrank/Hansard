@@ -79,17 +79,6 @@ Each rule is a **principle that survives a project change**; the project-specifi
 (paths, calls, numbers) live in one swappable facts file — write it once, the rules don't
 change.
 
-## Two layers
-
-1. **Action doorman** — don't make a single wrong move (the rules above).
-2. **Research-lint** — don't burn weeks going in circles. It reconstructs the *search tree*
-   of directions you've tried (from your run names + a durable, compaction-proof log), shows
-   when you've over-tuned one branch past diminishing returns, and surfaces the paper that
-   explains the wall you just hit — *just-in-time, not by recency* (reading it earlier is
-   cargo-cult). It only ever hints; it never prunes your search for you.
-
-![an example search tree](docs/search-tree.png)
-
 ## Why it's designed this way
 
 **Why a linter at all — not a prompt, a skill, or a workflow?** The failure mode dictates the
@@ -118,12 +107,6 @@ And given it's a linter:
 - **The knowledge is the principle; the project is just the scar.** Every rule is a law that
   survives a project change; the specifics (paths, calls, numbers) live in one swappable facts
   file. A wrong default isn't a rule — it's an *instance* of "match the frozen component's config."
-- **Catching single mistakes isn't enough — you also go in circles.** A second layer
-  reconstructs your search tree from the traces you already leave, flags when you've over-tuned
-  one branch, and surfaces the paper that explains the wall *you just hit*. It only ever hints.
-- **Nothing to maintain, nothing to lose.** The tree is rebuilt from traces every run; the
-  irreplaceable "why we abandoned X" is harvested into git before a session compacts. Anchored
-  to your work — never to a session, which may never end.
 
 The full rationale (the scars each rule came from) is in
 [DESIGN.md](trainlint/DESIGN.md) — read it before adding rules.
@@ -146,6 +129,27 @@ Pure Python standard library — **zero dependencies**. Then it just runs. See
 /trainlint:lint             # directionality + "read this now" hints
 /trainlint:quiz             # get drilled on a transferable principle until you've got it
 ```
+
+## There's a second layer: it maps where you've been
+
+The bouncer stops single wrong *moves*. But there's a slower way to lose a week: going in
+**circles** — over-tuning a dead branch, re-running what you already ruled out, hitting a wall a
+paper would've explained.
+
+So Trainlint also keeps a map. It reconstructs the **search tree** of directions you've tried —
+rebuilt every run from the traces you already leave (your run names + a durable, compaction-proof
+log), never something you hand-maintain. Then it *hints*, never prunes:
+
+- when you've over-tuned one branch past diminishing returns
+- when a stalled branch might be the *trunk's* fault, not the branch's
+- which paper explains the wall you **just** hit — surfaced just-in-time, not by recency
+  (reading it earlier is cargo-cult)
+
+![an example search tree](docs/search-tree.png)
+
+**Nothing to maintain, nothing to lose.** The tree is rebuilt from traces every run; the
+irreplaceable "why we abandoned X" is harvested into git before a session compacts — anchored to
+your work, never to a session (which may never end). See it any time with `/trainlint:viz`.
 
 ## Why it stays general
 

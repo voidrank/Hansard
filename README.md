@@ -21,6 +21,8 @@ Now an AI agent writes that code for you, just as confidently. Reading every lin
 reference by hand is an inhuman job — that's a linter's job. **Trainlint checks the line the
 moment it's written.**
 
+![the frustrating loop vs. catching it at write time](docs/the-loop.png)
+
 ## How it works — a doorman, four moves
 
 On every message / agent tool-use it does exactly one of four things, and only the last two

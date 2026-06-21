@@ -12,21 +12,14 @@ quietly wrong) at the moment they happen — before they cost you a week of GPU.
 
 ## The week you'll never get back
 
-You change one thing and launch a run. Loss drops. Nothing crashes. The samples are just…
-a little off — so you blame the data and retrain. Still off. You tune the loss weights, then
-the learning rate, then the batch size. A week. Two. A few thousand GPU-hours.
+You change one thing, launch, wait. Loss drops, nothing crashes — the output is just *off*.
+Days of retraining and tuning later, you diff against the reference line by line and find it:
+**one preprocessing default, silently wrong.** The run was dead on arrival. Nothing told you,
+because nothing crashed.
 
-Finally, out of ideas, you diff your training code against the reference line by line — and
-there it is: a preprocessing call that silently defaulted to the wrong value. **One line.**
-The run was dead on arrival, and nothing ever told you, because nothing ever crashed.
-
-Now put an AI agent in the loop writing that training code for you. It makes these mistakes
-**confidently and plausibly** — so you don't catch them either.
-
-Re-reading every line against a reference, every time, is a miserable, inhuman job. That's
-exactly what a linter is for. A compiler catches type errors; a linter catches the
-plausible-looking ones. **Trainlint is that linter for training — and it checks the line the
-moment the agent writes it.**
+Now an AI agent writes that code for you, just as confidently. Reading every line against a
+reference by hand is an inhuman job — that's a linter's job. **Trainlint checks the line the
+moment it's written.**
 
 ## How it works — a doorman, four moves
 

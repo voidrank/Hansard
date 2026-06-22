@@ -27,6 +27,12 @@ For each decision `d`:
    about THIS project's decision). Wait for my answer.
 2. When I answer, reveal `d.choice` + `d.why`, and judge whether I grasped the underlying
    **principle** (the transferable law) — not just the surface detail.
+   **ANSWER SHARP — this is non-negotiable.** State the one correct answer as a flat fact in
+   one or two sentences, then the one-line principle. NO hedging, NO "it depends" / "could be" /
+   "probably", NO multi-paragraph mush. If I was wrong, say plainly: "Wrong. The answer is X,
+   because Y." Concrete value first (e.g. "power=1.0, not 2.0"), principle second. If the honest
+   answer genuinely IS conditional, name the exact condition and both branches — that is still
+   sharp; vagueness is dressing up "I'm not sure" as nuance.
 3. **If I got the principle →** mark it mastered: `progress.mark(name, d, mastered=True)` (stamps
    the decision's current fingerprint), and move to the next decision.
 4. **If I missed it or couldn't answer →** don't let it go. GENERATE 2-3 fresh questions that drill

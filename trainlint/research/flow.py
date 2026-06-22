@@ -22,6 +22,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import tree   # noqa: E402
 import lint   # noqa: E402  (lint.brief)
+import plan   # noqa: E402  (plan.brief — the project's decision floor-plan)
 
 STATE = HERE / ".state"
 
@@ -60,6 +61,14 @@ def context_briefing(name, nodes):
     parts = [f"[trainlint:context] project '{name}' — re-establishing context."]
     if goal:
         parts.append("goal: " + goal)
+    pb = plan.brief(name)
+    if pb:
+        s = plan.summary()
+        nxt = (s["open"] or s["unverified"])
+        tail = f" — next: {nxt[0]['decision']}" if nxt else ""
+        parts.append(pb + tail)
+    else:
+        parts.append("no plan yet — draft the project's decisions with `/trainlint:plan`")
     parts.append(f"search tree: {len(nodes)} directions"
                  + (f"; {b}" if b else "; no stalled branches / ready papers right now"))
     parts.append("full picture any time: `/trainlint:viz` (or python3 research/viz.py)")

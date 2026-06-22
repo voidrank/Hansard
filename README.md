@@ -60,24 +60,37 @@ And two house rules keep him safe to leave on:
   knocking the door off its hinges — a bug in the bouncer is always safer than the bug he's
   there to stop.
 
-## What it catches — general principles, not one project's trivia
+## What it catches — silent-wrong has only a few shapes
 
-Each rule is a **principle that survives a project change**; the project-specific values
-(paths, library calls, magic numbers) live in one swappable file.
+A bug that crashes is the easy kind — you fix it and move on. The expensive ones are *silent*:
+loss still drops, nothing errors, the model is just quietly wrong. They feel infinitely varied,
+but they aren't — they keep coming back in a handful of shapes. Trainlint knows the shapes.
 
-| principle | what it looks like |
-|---|---|
-| preprocessing must match the frozen component's training config | an input transform that silently differs from how the frozen encoder was trained → out-of-distribution inputs |
-| inference must reproduce training's masks/shifts bit-for-bit | a dropped autoregressive off-by-one → the model learns to echo its input |
-| no-op / padding regions are OOD under a frozen tokenizer | padding the tokenizer never saw → it maps to out-of-distribution codes that quietly become a chunk of your targets |
-| training reads must be on fast, reliable storage | a networked filesystem that corrupts under concurrent load → a silent crash mid-training |
-| an eval/demo must run end-to-end through the model | a proxy that looks right no matter how broken the model is |
-| config from many sources silently overrides | print the *effective* value, don't trust the flag you wrote |
-| a weak modality learns a shortcut and ignores the strong condition | high teacher-forced accuracy, garbage free-running generation |
+**1. Training and inference quietly disagree.** The model learns under one setup and runs under
+another: input preprocessing that no longer matches the frozen encoder it was built for; a mask
+or an off-by-one shift that's there at training time but not at generation (or the reverse);
+padding the tokenizer was never trained on. Each one feeds the model something it never saw —
+nothing crashes, the output is just subtly, persistently off.
 
-…20+ rules. Each is a transferable principle for AI/ML training; your project's specifics
-(paths, calls, numbers) live in one swappable facts file — write it once, the rules don't
-change.
+**2. The model takes the shortcut you left open.** Hand a weak component an easy crutch — say, a
+peek at the answer during training — and it learns to lean on the crutch instead of the hard
+signal you actually care about. Scores *with* the crutch look great; take it away at generation
+and the whole thing collapses.
+
+**3. You're not actually measuring the model.** An eval or a demo that would look the same
+whether the model is brilliant or broken — a proxy that flatters you while telling you nothing.
+
+**4. The value you wrote isn't the value that ran.** Config stacks up from flags, files, env,
+and framework defaults, and the last writer silently wins. You burn a day tuning a number that
+was overridden before the run even started.
+
+**5. The ground rots under you.** Training reads from storage that corrupts under concurrent
+load — fine in a ten-minute smoke test, fatal six hours into the real run.
+
+Each shape is a **principle, not a project fact** — it survives a move to a new model or
+codebase. Your project's specifics (which encoder, which path, which magic number) live in one
+swappable facts file; the shapes don't change. That's ~20 rules today, every one an instance of
+the families above.
 
 ## Why it's designed this way
 

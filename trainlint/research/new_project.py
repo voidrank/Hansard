@@ -73,10 +73,15 @@ def main():
       "# fields: id | title | problem | concepts[] | prereqs[] | match[] (wall keywords) | read(bool)\n")
     w(HERE / f"log.{name}.jsonl",
       "# durable append-only annotation log (harvested from sessions). starts empty.\n")
+    w(HERE / f"plan.{name}.jsonl",
+      "# Project PLAN: the ordered DECISIONS that define this run, each tagged with the\n"
+      "# transferable PRINCIPLE that governs it. Draft it with /trainlint:plan (the agent\n"
+      "# decomposes goal+facts into decisions; you confirm). See research/plan.mimo.jsonl.\n"
+      "# fields: id | phase | decision | choice | principle | why | status(open|decided|verified) | match(regex)\n")
     w(HERE / f"goal.{name}.txt", "TODO: one line — what is this project trying to build?\n")
     (ROOT / ".active-project").write_text(name + "\n", encoding="utf-8")
-    print(f"\nactive project set to '{name}'. Fill the TODOs, then start working — "
-          f"flow.py will kick in (context / hint / viz-on-change / quiz).")
+    print(f"\nactive project set to '{name}'. Fill the TODOs, draft the plan with "
+          f"/trainlint:plan, then start working — flow.py kicks in (context / hint / viz / quiz).")
 
 
 if __name__ == "__main__":

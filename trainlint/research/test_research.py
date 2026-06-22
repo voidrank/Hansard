@@ -7,6 +7,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import tree
 import governor
 import surfacer
+import plan
 
 
 def main():
@@ -42,7 +43,23 @@ def main():
           "surfacer couples the 351-OOD wall to the frozen-tokenizer entry")
     check("Inner Monologue" in surf, "surfacer couples the 'rambling' wall to Moshi inner-monologue")
 
-    total = 9
+    # --- plan artifact: the decision floor-plan both machines consume ---
+    pl = plan.load("mimo")
+    check(len(pl) >= 10, f"plan.mimo loaded ({len(pl)} decisions)")
+    check(all(n.get("id") and n.get("decision") and n.get("principle")
+              and n.get("status") in plan.STATUSES for n in pl),
+          "every plan decision has id + decision + principle + a valid status")
+    # the bridge the plan-aware doorman will use: an action's text -> the decision it touches
+    hit = plan.locate("writing tf_top1.py to measure teacher-forced accuracy", pl)
+    check(any(n["id"] == "eval-protocol" for n in hit),
+          "locate() maps a teacher-forcing action onto the eval-protocol decision")
+    check(plan.by_id(pl, "eval-protocol")["principle"] == "free-running-not-teacher-forced-is-the-test",
+          "eval-protocol decision is governed by the free-running principle (the audit's central miss)")
+    s = plan.summary(pl)
+    check(sum(s["counts"].values()) == len(pl) and plan.brief("mimo").startswith("plan:"),
+          "plan.summary/brief account for every decision")
+
+    total = 14
     print(f"\n{total - fails}/{total} passed")
     sys.exit(1 if fails else 0)
 

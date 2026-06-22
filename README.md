@@ -102,7 +102,7 @@ training code" step at the exact moment you drop an off-by-one, and a multi-agen
 edit is far too heavy. Only something **ambient** (fires on every action, unbidden), **at the
 moment**, **action-aware** (sees the diff), and **able to actually stop the bad one** catches a
 mistake you didn't know you were making — that's a linter. (Trainlint still uses commands for the
-deliberate parts — `viz`/`lint`/`quiz`/`init` — and ships its rules just-in-time, not always-on.)
+deliberate parts — `plan`/`quiz`/`viz`/`lint`/`init` — and ships its rules just-in-time, not always-on.)
 
 And given it's a linter:
 
@@ -137,11 +137,30 @@ Pure Python standard library — **zero dependencies**. Then it just runs. See
 ## Use it on your project
 
 ```
-/trainlint:init <name>      # scaffold the one facts file you fill in — the rules don't change
+/trainlint:init <name>      # register a project (thin — no TODO ceremony)
+/trainlint:plan             # understand it end-to-end, decompose into decisions, get quizzed
+/trainlint:quiz             # drill the decisions + the sticky concepts you keep forgetting
 /trainlint:viz              # see your search tree
 /trainlint:lint             # directionality + "read this now" hints
-/trainlint:quiz             # get drilled on a transferable principle until you've got it
 ```
+
+## Understand it first, then stay on the thread
+
+A silent bug isn't the only way to lose a week. You can also start building before you understand
+what you're building, or drift off the one thing that actually matters. So Trainlint front-loads
+understanding and then keeps you pointed.
+
+`/trainlint:plan` walks the whole project end-to-end **in plain language** — every term defined (no
+"wait, what's a DAC?" three weeks in), every claim grounded in the actual code — and decomposes it
+into the **decisions** that silently determine correctness. Then it **quizzes you** on each until
+you actually hold it; a concept you keep forgetting gets drilled until it sticks.
+
+From then on a **compass** stays lit every turn: your **goal**, the **main thread** (the one
+load-bearing open question that gates everything right now), and the **next action**. It keeps the
+agent — and you — on the thing that matters instead of polishing side-quests. Lose the goal and you
+wander; lose the thread and you scatter. The compass is how the work stays *motivated and focused*.
+The doorman uses the same plan: it knows which decision an edit touches, so it escalates the genuinely
+unresolved one and stays quiet on the settled ones — routing by the decision, not by keywords.
 
 ## There's a second layer: it maps where you've been
 

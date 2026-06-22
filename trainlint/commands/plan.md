@@ -40,6 +40,16 @@ Present this full picture to me FIRST and let me correct it. Only once the conte
 clear do you decompose it into decisions (below) — every decision must trace back to something in
 this exposition.
 
+**While you establish this context, FILL the project's facts files** (init leaves them empty on
+purpose — you're the one reading the code, so you're the one who knows them):
+- `project.<name>.json` — the doorman's danger patterns: `bad_storage_re`, `locked_configs_re`,
+  `preproc_trap_re`/`preproc_ok_re`, `frozen_component`, `reference_impl`, the `*_example` fields.
+  Fill from what you actually found in the code. See `project.mimo.json` for the key shape.
+- `research/facts.<name>.json` — `runs_glob` + `direction_regex` (from the real run-dir layout),
+  `candidate_moves`, `trunk_checks`. See `research/facts.mimo.json`.
+Leave a key empty (not a fake value) if you genuinely can't determine it yet — an empty fact just
+keeps the doorman silent on that rule, which is correct. Show me what you filled and let me correct it.
+
 ## `draft` (default when the project has no plan yet)
 
 1. Read `research/goal.<name>.txt`, `project.<name>.json`, and `research/facts.<name>.json`, AND the

@@ -65,6 +65,12 @@ def decide(data):
                           "message": "🧠 Knowledge gate (answer before you continue) " + ctx + q["q"]
                           + " (don't answer: " + q.get("naive", "") + ")"}]
 
+    # An unexpanded {{placeholder}} means a project fact this rule needs isn't filled yet
+    # (a freshly-registered project before /trainlint:plan). Drop it — the rule isn't ready,
+    # and leaking literal {{...}} into the message is worse than staying silent. General rules
+    # (no placeholders) are unaffected. This is what makes "silent until facts filled" true.
+    items = [it for it in items if "{{" not in (it.get("message") or "")]
+
     if not items:
         return None
 

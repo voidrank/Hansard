@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
-"""Scaffold Trainlint for a NEW project — writes template facts/knowledge/log/goal and
-sets it active. The mechanism never changes; you only fill these per-project facts.
+"""Register a NEW project — a THIN scaffolder. It only creates the empty per-project
+substrate and sets the project active. It does NOT make you fill a pile of TODO fields.
 
   python3 new_project.py <name>
 
-Then edit the TODOs (see project.mimo.json / research/facts.mimo.json as worked examples)
-and start working — flow.py kicks in (context / hint / viz-on-change / quiz kickoff).
+The facts that used to be a TODO ceremony here (the doorman's danger patterns in
+project.<name>.json, the research layer's runs_glob/direction_regex in facts.<name>.json)
+are now filled by `/trainlint:plan` while it establishes the project's full context —
+because that step reads the actual code anyway, which is the only honest way to know them.
+Until then the files are empty stubs and the doorman simply stays silent on this project
+(empty facts -> placeholders no-match, never a crash).
 """
 import json
 import sys
@@ -14,41 +18,23 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
 
+# Empty stub — /trainlint:plan fills the danger-pattern keys from the real code.
 ACTION_FACTS = {
-    "_comment": "PROJECT FACTS for <name>. The rules never change, only this file. See project.mimo.json for a worked example. Fill every TODO; regex fields use JSON-escaped backslashes (\\\\.).",
-    "reference_impl": "TODO: your verified reference implementation",
-    "frozen_component": "TODO: e.g. your frozen tokenizer / pretrained encoder",
-    "good_storage": "TODO: fast, reliable storage path",
-    "bad_storage": "TODO: unreliable storage label",
-    "launch_re": "sbatch|torchrun|deepspeed |accelerate launch|python\\S*\\s[^|;&]*train",
-    "bad_storage_re": "TODO-regex e.g. /slowfs/|/nfs/",
-    "data_file_ext_re": "jsonl|json|npy|wav|tar|arrow|bin",
-    "locked_configs_re": "deepspeed.*\\.json|ds_config|tokenizer_config\\.json",
-    "preproc_trap_re": "TODO-regex: the preprocessing call to watch (e.g. MelSpectrogram\\(|Normalize\\()",
-    "preproc_ok_re": "TODO-regex: the correct setting (e.g. power\\s*=\\s*1\\.0)",
-    "preproc_example": "TODO: what goes wrong if the preproc doesn't match the frozen component",
-    "pad_ood_re": "np\\.zeros",
-    "pad_ood_example": "TODO: what your padding/no-op encodes to OOD",
-    "project_forward_re": "TODO|forward-logic|symbols|to|escalate-on",
-    "forward_example": "TODO: forward/mask/sampling traps specific to this project",
-    "target_dist_traps": "TODO: the loss-weight / field traps",
-    "config_override_example": "TODO: where config silently overrides",
-    "regime_example": "TODO: an hparam that doesn't transfer across regimes",
-    "poison_example": "TODO: what makes a ckpt poisoned here",
-    "demo_param": "TODO: the key preprocessing param a demo must state",
-    "code_align_example": "TODO: custom-vs-reference traps",
-    "codec_quirks": "TODO: frozen-component quirks (or leave generic)",
-    "eval_region_example": "TODO: a metric hijacked by a trivial majority",
-    "eval_crutch_example": "TODO: eval crutches deployment won't have",
-    "eval_deploy_example": "TODO: offline-vs-deployment mismatch"
+    "_comment": "Action-rule facts for <name>. EMPTY — /trainlint:plan fills these while "
+                "establishing context (it reads the project to learn the danger patterns). The "
+                "doorman stays silent on this project until then. See project.mimo.json for the "
+                "full key shape (bad_storage_re, locked_configs_re, preproc_trap_re, ...)."
 }
 
+# Minimal research facts: sensible thresholds + empty trace-reading keys. Empty runs_glob/
+# direction_regex make the research-lint degrade cleanly to an empty tree (no crash).
 RESEARCH_FACTS = {
-    "_comment": "Research facts for <name>: how to read directions + progress from this project's traces.",
+    "_comment": "Research facts for <name> — /trainlint:plan fills runs_glob/direction_regex/"
+                "candidate_moves from the real run layout. See research/facts.mimo.json.",
     "thresholds": {"patience_P": 3, "window_K": 3, "flat_eps": 0.01},
-    "runs_glob": "TODO: glob to your run dirs, e.g. /path/to/runs/*",
-    "direction_regex": "TODO: regex extracting (lineage)(_knob) from a run dir name",
-    "trunk_checks": ["diff-vs-reference", "verify-data-distribution", "trained-enough"],
+    "runs_glob": "",
+    "direction_regex": "",
+    "trunk_checks": [],
     "candidate_moves": []
 }
 
@@ -75,13 +61,13 @@ def main():
       "# durable append-only annotation log (harvested from sessions). starts empty.\n")
     w(HERE / f"plan.{name}.jsonl",
       "# Project PLAN: the ordered DECISIONS that define this run, each tagged with the\n"
-      "# transferable PRINCIPLE that governs it. Draft it with /trainlint:plan (the agent\n"
-      "# decomposes goal+facts into decisions; you confirm). See research/plan.mimo.jsonl.\n"
+      "# transferable PRINCIPLE that governs it. Draft it with /trainlint:plan. See plan.mimo.jsonl.\n"
       "# fields: id | phase | decision | choice | principle | why | status(open|decided|verified) | match(regex)\n")
-    w(HERE / f"goal.{name}.txt", "TODO: one line — what is this project trying to build?\n")
+    w(HERE / f"goal.{name}.txt", "")
     (ROOT / ".active-project").write_text(name + "\n", encoding="utf-8")
-    print(f"\nactive project set to '{name}'. Fill the TODOs, draft the plan with "
-          f"/trainlint:plan, then start working — flow.py kicks in (context / hint / viz / quiz).")
+    print(f"\nregistered '{name}' and set it active. Empty substrate created — nothing to "
+          f"hand-fill.\nNext: run `/trainlint:plan` — it establishes the full project context, "
+          f"fills the facts files from the real code, drafts the decisions, then quizzes you.")
 
 
 if __name__ == "__main__":

@@ -1,16 +1,17 @@
 ---
-description: Scaffold Trainlint for a new project (template facts/knowledge/log/goal + set it active)
+description: Register a new project — a thin scaffolder that creates the empty substrate and sets it active (no TODO ceremony; /trainlint:plan fills the facts)
 argument-hint: "<project-name>"
 ---
 Run: `python3 "${CLAUDE_PLUGIN_ROOT}/research/new_project.py" $ARGUMENTS`
 
-Then show me the files it created and walk me through the `TODO` fields I need to fill:
-- `project.<name>.json` — action-rule facts (bad-storage regex, locked configs, preprocessing
-  traps, reference impl, examples).
-- `research/facts.<name>.json` — research facts (`runs_glob`, `direction_regex`, trunk-checks,
-  candidate moves).
-- `research/knowledge.<name>.jsonl` — papers indexed by the problem they solve.
-- `research/goal.<name>.txt` — one line: what this project is building.
+This is a THIN registrar: it creates the empty per-project files (`project.<name>.json`,
+`research/facts.<name>.json`, `knowledge`/`log`/`plan` jsonl, `goal.<name>.txt`) and sets the
+project active. It deliberately does NOT make you fill a pile of TODO fields.
 
-Use `project.mimo.json` and `research/facts.mimo.json` as worked examples. After I fill them,
-the flow (context / hint / viz-on-change / quiz kickoff) runs against this project.
+The facts (the doorman's danger patterns; the research layer's `runs_glob`/`direction_regex`)
+are filled by **`/trainlint:plan`**, while it establishes the project's full context — because
+that step reads the actual code anyway, which is the only honest way to know them. Until then
+the stubs are empty and the doorman simply stays silent on this project (no crash).
+
+After running this, tell me to run **`/trainlint:plan`** next — that's where the project gets
+understood, the facts get filled, the decisions get drafted, and the quiz begins.

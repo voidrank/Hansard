@@ -30,19 +30,19 @@ ED = {"hook_event_name": "PreToolUse", "tool_name": "Edit", "session_id": SESS,
       "tool_input": {"file_path": F, "new_string": "x = 2"}}
 
 # 1. editing an existing file not yet read -> coach
-check("haven't READ" in _ctx(router.decide(ED)),
+check("read it this session" in _ctx(router.decide(ED)),
       "editing an existing file you haven't read -> read-before-edit coach")
 
 # 2. after reading it, the same edit is silent on that file
 readtrack.record({"hook_event_name": "PreToolUse", "tool_name": "Read", "session_id": SESS,
                   "tool_input": {"file_path": F}})
-check("haven't READ" not in _ctx(router.decide(ED)),
+check("read it this session" not in _ctx(router.decide(ED)),
       "after reading the file, no read-before-edit coach")
 
 # 3. creating a NEW (nonexistent) file is fine — nothing to have read
 NEW = {"hook_event_name": "PreToolUse", "tool_name": "Write", "session_id": SESS,
        "tool_input": {"file_path": "/tmp/trainlint_brand_new_xyz.py", "content": "x"}}
-check("haven't READ" not in _ctx(router.decide(NEW)),
+check("read it this session" not in _ctx(router.decide(NEW)),
       "writing a brand-new file -> no read-before-edit coach")
 
 # cleanup

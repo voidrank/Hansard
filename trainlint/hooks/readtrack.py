@@ -88,7 +88,7 @@ def check(data):
     if rp in readset:
         return []
     return [{"level": "coach", "name": "read-before-edit",
-             "message": (f"⚠️ you're editing {Path(fp).name} but haven't READ it this session — don't "
-                         "infer how it works from the filename or your prior. Read it first. Acting on "
-                         "code you haven't looked at is the action-level form of asserting without "
-                         "grounding (and exactly where silent bugs hide).")}]
+             "message": (f"VERIFY (ignore if it doesn't apply): are you editing {Path(fp).name} from its ACTUAL "
+                         "current contents, or from memory/assumption? You haven't read it this session. If you're "
+                         "inferring how it works → read it first (acting on unread code is where silent bugs hide). "
+                         "If you wrote it yourself this session or already know it cold → ignore.")}]

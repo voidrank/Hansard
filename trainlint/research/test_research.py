@@ -63,6 +63,12 @@ def main():
     mt = plan.main_thread(pl)
     check(mt is not None and mt.get("load_bearing") and mt["status"] == "open",
           "main_thread() picks the load_bearing OPEN decision as the thing to drive")
+    # pillars = the core dimensions that stay in view EVEN WHEN decided (so none silently drops)
+    pil = plan.pillars(pl)
+    check(len(pil) >= 2 and any(p.get("status") != "open" for p in pil),
+          "pillars() returns the core dimensions, including settled ones (kept in view)")
+    check(any(p["id"] == "stream-layout" for p in pil),
+          "a decided-but-core dimension (stream-layout = the interleave) is a pillar, not dropped")
 
     # --- plan-quiz coverage: quiz after any plan change, only the new/changed/unmastered ---
     prog0 = {}
@@ -77,7 +83,7 @@ def main():
     check(any(n["id"] == d0["id"] for n in progress.targets([edited], prog1)),
           "editing a mastered decision (fingerprint change) re-opens it for quizzing")
 
-    total = 18
+    total = 20
     print(f"\n{total - fails}/{total} passed")
     sys.exit(1 if fails else 0)
 

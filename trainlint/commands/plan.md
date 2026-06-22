@@ -53,6 +53,12 @@ Present this full picture to me FIRST and let me correct it.
    the progress already on disk survives — the plan is never "started but unwritten".
    Mark exactly ONE decision `"load_bearing": true` — the open decision that most gates the rest
    (the cheapest test that could invalidate the whole plan). That one becomes the **main thread**.
+   Also mark the **2-4 PILLARS** `"pillar": true` — the project's CORE dimensions, the things it
+   fundamentally IS (e.g. the codec contract, the text/audio layout/interleave, the loss/abstain
+   behavior). Pillars stay in the compass every turn EVEN WHEN decided, so a core dimension can't
+   silently drop out of view. (`load_bearing` = the one thing to drive NEXT; `pillar` = a thing the
+   project always rests on.) And when you write the GOAL (step 2), NAME the pillars in it — don't
+   collapse a multi-component project into the single flashiest component.
    **Anti-prior:** if a decision REJECTS an option you (the agent) would otherwise keep drifting
    toward — because your context is saturated with it (e.g. "build on megafish, NOT in the MiMo
    codebase / NOT MiMo's codec"; "fresh-from-base, NOT resume a prior duplex ckpt") — pin it with

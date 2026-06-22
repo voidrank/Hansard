@@ -124,6 +124,17 @@ def main_thread(plan=None, name=None):
     return unver[0] if unver else None
 
 
+def pillars(plan=None, name=None):
+    """The project's CORE dimensions — decisions marked `pillar: true`. The compass shows these
+    EVERY turn, EVEN WHEN they're decided, so a core dimension (e.g. the text/audio interleave)
+    can't vanish from view just because its decision is settled. Unlike main_thread (the one open
+    thing to drive NEXT), pillars are about what the project fundamentally IS — they keep the whole
+    shape in view instead of collapsing it to a single thread or a one-line goal."""
+    if plan is None:
+        plan = load(name)
+    return [n for n in plan if n.get("pillar")]
+
+
 def avoided(plan=None, name=None):
     """The explicitly REJECTED options (anti-prior decisions) the agent must not drift back into.
     A decision pins one with two fields:

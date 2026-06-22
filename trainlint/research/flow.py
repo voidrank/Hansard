@@ -103,9 +103,15 @@ def _compass(name):
     pl = plan.load(name)
     mt = plan.main_thread(pl) if pl else None
     av = plan.avoided(pl) if pl else []
+    pil = plan.pillars(pl) if pl else []
     bits = []
     if goal:
         bits.append("🎯 goal: " + goal)
+    if pil:
+        # the project's CORE dimensions — shown every turn EVEN WHEN decided, so no dimension (e.g.
+        # the text/audio interleave) silently drops out of view the way a one-line goal collapses it.
+        bits.append("🧱 pillars (keep ALL in view, even settled ones): "
+                    + " · ".join(p.get("id", "") for p in pil))
     if mt:
         bits.append("main thread (drive this, don't wander): " + mt.get("decision", ""))
     if av:

@@ -98,8 +98,10 @@ the families above.
 form. These bugs are *silent, continuous, and you don't know you're making them.* A static prompt
 (CLAUDE.md) is persuasion you can ignore — always-on noise, blind to the actual diff, and it can't
 stop anything. A skill or a workflow has to be *invoked* — but you'd never invoke a "check my
-training code" step at the exact moment you drop an off-by-one, and a multi-agent workflow on every
-edit is far too heavy. Only something **ambient** (fires on every action, unbidden), **at the
+training code" step at the exact moment you drop an off-by-one, and standing up a multi-agent
+workflow for every edit is both too heavy and backwards: it makes *you* run the orchestration out
+front, when what you want is the opposite — a copilot working quietly behind you, taking the grunt
+work off your hands, unasked. Only something **ambient** (fires on every action, unbidden), **at the
 moment**, **action-aware** (sees the diff), and **able to actually stop the bad one** catches a
 mistake you didn't know you were making — that's a linter. (Trainlint still uses commands for the
 deliberate parts — `plan`/`quiz`/`viz`/`lint`/`init` — and ships its rules just-in-time, not always-on.)

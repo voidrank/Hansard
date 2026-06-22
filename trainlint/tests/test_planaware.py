@@ -73,7 +73,7 @@ check("user" in _surfaced(out).lower() or "confirm" in _surfaced(out).lower()
 # 4. ANTI-PRIOR WATCH — drifting toward an explicitly rejected option is caught on ANY action,
 #    coach-level (agent-facing), and names the decision that rejected it.
 ev_drift = {"hook_event_name": "PreToolUse", "tool_name": "Bash",
-            "tool_input": {"command": "torchrun train.py --resume dup_d3v21s_nofreeze/latest"}}
+            "tool_input": {"command": "torchrun train.py --resume dup_d3v21s/latest"}}
 items, _ = planaware.assess(ev_drift)
 check(any("REJECTED" in i["message"] and i.get("plan_decision") == "ckpt-init" for i in items),
       "anti-prior: resuming from a previous duplex ckpt is flagged (cites ckpt-init)")
@@ -87,5 +87,28 @@ items_ok, _ = planaware.assess(ev_ok)
 check(not any("REJECTED" in i["message"] for i in items_ok),
       "anti-prior does NOT fire on the legitimate fresh-from-base path (no false positive)")
 
-print(f"\n{11 - fails}/11 passed")
+# 5. HIGH-STAKES GATE — model/loss/training-stage work on an UN-DRILLED decision pops a user-facing
+#    escalate (sticky), but does NOT block. Non-high-stakes phases (eval/deploy/...) do not gate.
+import os as _os                                                          # noqa: E402
+_sp = HOOKS.parent / "research" / ".state" / "mimo.plan-progress.json"    # ensure nothing mastered
+_bak = _sp.read_text() if _sp.exists() else None
+try:
+    _sp.unlink()
+except OSError:
+    pass
+ev_hs = {"hook_event_name": "PreToolUse", "tool_name": "Edit",
+         "tool_input": {"file_path": "/home/shiyil/mimo/loss.py", "new_string": "empty_loss_weight = 0.5"}}
+out_hs = router.decide(ev_hs)
+check("GATE" in _surfaced(out_hs) and "DRILLED" in _surfaced(out_hs),
+      "high-stakes gate: loss-stage work on an un-drilled decision pops to the user")
+check(out_hs and out_hs.get("hookSpecificOutput", {}).get("permissionDecision") != "deny",
+      "high-stakes gate does NOT block — escalate popup, action still proceeds")
+ev_lo = {"hook_event_name": "PreToolUse", "tool_name": "Write",
+         "tool_input": {"file_path": "/home/shiyil/mimo/eval_metric.py", "content": "aggregate accuracy top-1"}}
+check("GATE" not in _surfaced(router.decide(ev_lo)),
+      "non-high-stakes (eval-stage) work does NOT fire the gate")
+if _bak is not None:
+    _sp.write_text(_bak)
+
+print(f"\n{14 - fails}/14 passed")
 sys.exit(1 if fails else 0)

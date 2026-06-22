@@ -25,6 +25,8 @@ from pathlib import Path
 
 RESEARCH = Path(__file__).resolve().parent.parent / "research"
 STATE = RESEARCH / ".state"
+# plan phases where work is expensive + irreversible — the gate only fires here (high-stakes only)
+HIGH_STAKES = {"model", "loss", "train"}
 sys.path.insert(0, str(RESEARCH))
 try:
     import plan as planlib  # noqa: E402
@@ -123,7 +125,19 @@ def assess(data):
         decision = d.get("decision", "")
         why = (" " + d["why"]) if d.get("why") else ""
         choice = d.get("choice", "")
-        gate = ("" if prog.get(did, {}).get("mastered")
+        mastered = bool(prog.get(did, {}).get("mastered"))
+        # HIGH-STAKES GATE: doing model/loss/training-stage work on a decision you haven't drilled
+        # in quiz fires a USER-FACING popup (sticky → never downgraded), but does NOT block. The
+        # action still goes through; you just can't quietly do expensive, irreversible work on a
+        # decision you don't yet understand.
+        if not mastered and d.get("phase", "") in HIGH_STAKES:
+            items.append({"level": "escalate", "sticky": True, "plan_decision": did,
+                          "message": (f"🚦 GATE — you're doing {d.get('phase')}-stage work on «{decision}» "
+                                      f"but haven't DRILLED it in quiz (principle: {princ}).{why} "
+                                      f"Quiz it first: `/trainlint:quiz {did}` — high-stakes work on a "
+                                      f"decision you don't yet hold.")})
+            continue
+        gate = ("" if mastered
                 else f" (you haven't walked this decision in quiz yet — `/trainlint:quiz {did}`)")
         if status == "open":
             items.append({"level": "escalate", "plan_decision": did,

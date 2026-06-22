@@ -24,7 +24,6 @@ import prefilter      # noqa: E402
 import checks         # noqa: E402
 import classifier     # noqa: E402
 import planaware      # noqa: E402
-import quiz           # noqa: E402
 
 _RANK = {"reject": 3, "escalate": 2, "coach": 1}
 
@@ -55,15 +54,9 @@ def decide(data):
                 it["level"] = "coach"
                 it["message"] = "(plan: this decision is settled) " + it.get("message", "")
 
-    # quiz-gate (opt-in, non-blocking): surface ONE relevant question to make the
-    # operator prove they understand before acting. Escalate-class, never blocks.
-    qz = quiz.ask(data, classifier.haystack(data))
-    if qz:
-        q = qz[0]
-        ctx = ("[context: " + q["context"] + "] ") if q.get("context") else ""
-        items = items + [{"level": "escalate",
-                          "message": "🧠 Knowledge gate (answer before you continue) " + ctx + q["q"]
-                          + " (don't answer: " + q.get("naive", "") + ")"}]
+    # NOTE: the old mid-action quiz-gate was removed here on purpose. Quizzing is now PLAN-DRIVEN
+    # (the SessionStart understanding-gate + /trainlint:quiz over the plan's decisions), and concept
+    # gaps are caught by the `concept-gap-quiz` coach trigger — never a mid-action interruption.
 
     # An unexpanded {{placeholder}} means a project fact this rule needs isn't filled yet
     # (a freshly-registered project before /trainlint:plan). Drop it — the rule isn't ready,

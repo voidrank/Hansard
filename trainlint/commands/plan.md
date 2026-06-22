@@ -40,6 +40,9 @@ Present this full picture to me FIRST and let me correct it.
    overall GOAL into ONE clear, concrete sentence and write it to `research/goal.<name>.txt` — this
    is the north star the compass shows every turn; make it concrete (what we're building + the bar
    for "done"), not a vague aspiration.
+   As you define each term in the exposition, also record it to `research/glossary.<name>.jsonl` as
+   `{term, plain, why}` — the project's living glossary the concept-gap quiz draws on (so a term the
+   operator keeps asking about, e.g. DAC/s2/codec, can be drilled until it sticks).
 3. Decompose into the ordered DECISIONS — every place a silent choice determines correctness (data,
    preprocessing, ckpt init, forward/mask/loss, loss weights, parallelism/batch, LR/schedule, eval,
    deploy). For each: id (kebab) | phase | decision (the question) | choice ("" + status `open` if

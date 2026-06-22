@@ -16,6 +16,11 @@ time, never blocks your work.
   (a decision whose content `fp` no longer matches what you were last quizzed on, or that was
   never passed). Never re-drill a mastered+unchanged decision.
 - If `$ARGUMENTS` is a decision id or topic → restrict to that decision. If `all` → every decision.
+- If `$ARGUMENTS` names a CONCEPT (or the operator keeps asking what a term means), drill that
+  concept instead: look it up in `research/glossary.<name>.jsonl`, ask them to explain it in their
+  own words, grade against the plain definition, and `progress.mark` it (id = the term) so a sticky
+  concept (DAC, s2, codec…) gets locked in, not re-explained every time. Research+engineering throws
+  a lot of terms; a concept the operator can't hold is as much a gap as an un-walked decision.
 - If the target set is empty → say "every plan decision is mastered — nothing to drill" and stop
   (offer `/trainlint:quiz all` to review anyway).
 

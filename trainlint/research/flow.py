@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
-"""Project-flow hook — context / per-turn hint / viz-on-tree-change / quiz kickoff.
+"""Project-flow hook — context / always-on compass / per-turn hint / viz-on-tree-change.
 
 Everything is anchored to the PROJECT (the active-project name), to work events, and to
 each turn — NEVER to session boundaries (a session may never end, and SessionEnd is not
 guaranteed). One entry, dispatched by hook_event_name:
 
-  SessionStart      -> context briefing (re-established after each compaction too)
-  UserPromptSubmit  -> (1) per-turn hint (deduped)  (2) viz when the tree changed
-                       (3) quiz kickoff, once per project
+  SessionStart      -> context briefing (re-established after each compaction too), led by the
+                       goal + MAIN THREAD; flags an un-walked / un-written plan
+  UserPromptSubmit  -> (0) always-on compass (goal + main thread, agent-facing, every turn)
+                       (1) per-turn hint (deduped)  (2) viz when the tree has a real search
 
-It only emits text to inject; the agent acts on the viz/quiz directives. Always exits 0,
+It only emits text to inject; the agent acts on the directives. Always exits 0,
 writes nothing on error — must never break a session. Markers live in research/.state/
 (gitignored), keyed by project name + a tree fingerprint.
 """

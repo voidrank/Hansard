@@ -73,9 +73,8 @@ def context_briefing(name, nodes):
             parts.append(f"⚠️ you have NOT fully walked this project yet — {len(tg)}/{len(pl)} "
                          f"decisions un-mastered. Understanding them comes first: `/trainlint:quiz` "
                          f"(soft — it only drills the un-mastered ones).")
-        s = plan.summary(pl)
-        nxt = (s["open"] or s["unverified"])
-        tail = f" — next decision: {nxt[0]['decision']}" if nxt else ""
+        mt = plan.main_thread(pl)
+        tail = f" — MAIN THREAD (drive this next): {mt['decision']}" if mt else " — all decisions settled"
         parts.append(plan.brief(name) + tail)
     else:
         # backstop: a registered project (init ran -> facts/project files exist) with an empty plan
@@ -102,6 +101,24 @@ def _viz_directive():
             "(on mobile it lands as a zoomable image).")
 
 
+def _compass(name):
+    """The always-on motivation compass: GOAL (north star) + MAIN THREAD (the load-bearing open
+    decision to drive right now). Agent-facing — injected every turn so the agent stays locked on
+    the goal and doesn't drift into busywork; the goal is constant, the main thread updates as
+    decisions resolve. Returns '' if there's nothing to anchor to yet."""
+    goal = _read(HERE / f"goal.{name}.txt")
+    pl = plan.load(name)
+    mt = plan.main_thread(pl) if pl else None
+    bits = []
+    if goal:
+        bits.append("🎯 goal: " + goal)
+    if mt:
+        bits.append("main thread (drive this, don't wander): " + mt.get("decision", ""))
+    if not bits:
+        return ""
+    return "[trainlint:compass] " + "  ·  ".join(bits)
+
+
 def main():
     data = json.load(sys.stdin)
     event = data.get("hook_event_name", "")
@@ -114,17 +131,24 @@ def main():
 
     if event == "UserPromptSubmit":
         out = []
+        # (0) the ALWAYS-ON compass — goal + main thread, every turn, agent-facing. Keeps the agent
+        # locked on the north star + the one thing to drive, so it doesn't drift into busywork.
+        c = _compass(name)
+        if c:
+            out.append(c)
         # (1) per-turn hint, deduped (only when it changed)
         h = lint.brief(name)
         if h and h != _read(STATE / f"{name}.hint"):
             _write(STATE / f"{name}.hint", h)
             out.append(h)
-        # (2) viz when the tree changed (baseline silently on first sight; nudge on later changes)
+        # (2) viz when the tree changed — but ONLY for a project with a REAL search (branching or a
+        # wall). A pre-experiment project's tree is empty/trivial; nudging viz there is busywork.
         fp = _tree_fp(nodes)
         prev = _read(STATE / f"{name}.treefp")
         if fp != prev:
             _write(STATE / f"{name}.treefp", fp)
-            if prev and nodes:
+            worth_viz = len(nodes) > 1 or any(n.get("walls") for n in nodes.values())
+            if prev and worth_viz:
                 out.append(_viz_directive())
         # NOTE: the plan-quiz is intentionally NOT nudged mid-turn here. The understanding-gate
         # lives at the SessionStart briefing (a session boundary) + the plan-aware doorman flags

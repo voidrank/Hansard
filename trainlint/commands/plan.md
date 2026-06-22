@@ -36,7 +36,10 @@ Present this full picture to me FIRST and let me correct it.
 1. Read `${CLAUDE_PLUGIN_ROOT}/.active-project`, then `research/goal.<name>.txt`,
    `project.<name>.json`, `research/facts.<name>.json`, and the ACTUAL code/configs they point to.
    If `$ARGUMENTS` is free text (e.g. "focus on the turn-based audio discussion"), let it steer you.
-2. Do the COMPLETE-CONTEXT exposition above. Show me, let me correct it.
+2. Do the COMPLETE-CONTEXT exposition above. Show me, let me correct it. Then distill the project's
+   overall GOAL into ONE clear, concrete sentence and write it to `research/goal.<name>.txt` — this
+   is the north star the compass shows every turn; make it concrete (what we're building + the bar
+   for "done"), not a vague aspiration.
 3. Decompose into the ordered DECISIONS — every place a silent choice determines correctness (data,
    preprocessing, ckpt init, forward/mask/loss, loss weights, parallelism/batch, LR/schedule, eval,
    deploy). For each: id (kebab) | phase | decision (the question) | choice ("" + status `open` if
@@ -45,6 +48,8 @@ Present this full picture to me FIRST and let me correct it.
    touches this decision). **WRITE each decision to `research/plan.<name>.jsonl` AS YOU CONFIRM IT —
    incrementally, not all at the end** (keep the header comment). So if the conversation diverges,
    the progress already on disk survives — the plan is never "started but unwritten".
+   Mark exactly ONE decision `"load_bearing": true` — the open decision that most gates the rest
+   (the cheapest test that could invalidate the whole plan). That one becomes the **main thread**.
 4. **While establishing context, also FILL the facts files** init left empty (you're the one reading
    the code): `project.<name>.json` (the doorman's danger patterns — bad_storage_re,
    locked_configs_re, preproc_trap_re/preproc_ok_re, frozen_component, the *_example fields; see
@@ -54,10 +59,19 @@ Present this full picture to me FIRST and let me correct it.
    decision's governing principle as a question, grade against the principle, **answer SHARP**
    (concrete fact first, principle second, zero hedging), drill misses with fresh scars, and
    `progress.mark` the ones I get. Soft — "skip" exits.
+6. **Light up the compass — DON'T end on a menu.** Close by stating, in this shape:
+   `🎯 goal: <the north star>  ·  main thread: <the load_bearing open decision — everything hinges
+   on this>  ·  next: <one concrete action to settle it>`. Then **drive it** — propose the next move
+   and go do it (e.g. "let me run that cheap test now"). Do NOT present a flat list of all decisions
+   and ask "which to change / want to quiz?" — that offloads the priority back to me and kills the
+   momentum. One thread, one next action, in pursuit.
+   Also: **don't push empty tools.** If no experiments have run yet, `viz`/`lint` are empty — skip
+   them; the main thread is the destination, not a tool.
 
 If the plan ends up only partly written (we ran out of room, got pulled away), that's fine — the
-SessionStart briefing flags a registered-but-unwritten plan and the understanding-gate flags the
-un-mastered decisions, so nothing is silently dropped.
+SessionStart briefing flags a registered-but-unwritten plan, the understanding-gate flags the
+un-mastered decisions, and the compass keeps the goal + main thread visible every turn — so nothing
+is silently dropped and the work stays pointed at the one thing that matters.
 
 ## `review` / `status`
 Just read the existing plan and show it grouped by phase with status icons (✓ verified · decided

@@ -106,6 +106,24 @@ def summary(plan=None, name=None):
     }
 
 
+def main_thread(plan=None, name=None):
+    """The single driving decision — the 'main thread' the work should focus on right now:
+    the load-bearing OPEN decision if one is marked (the one that most gates the plan / the
+    cheapest test that could invalidate it), else the first open, else the first decided-but-
+    unverified. None when everything is verified. This is what keeps work focused instead of a
+    flat menu of every decision."""
+    if plan is None:
+        plan = load(name)
+    opens = [n for n in plan if n.get("status", "open") == "open"]
+    lb = [n for n in opens if n.get("load_bearing")]
+    if lb:
+        return lb[0]
+    if opens:
+        return opens[0]
+    unver = [n for n in plan if n.get("status") == "decided"]
+    return unver[0] if unver else None
+
+
 def brief(name=None):
     """One-line plan status, or '' if no plan exists for this project."""
     plan = load(name)

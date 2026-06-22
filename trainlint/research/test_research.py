@@ -59,6 +59,10 @@ def main():
     s = plan.summary(pl)
     check(sum(s["counts"].values()) == len(pl) and plan.brief("mimo").startswith("plan:"),
           "plan.summary/brief account for every decision")
+    # main thread = the load-bearing open decision (the compass's focus), not just the first open
+    mt = plan.main_thread(pl)
+    check(mt is not None and mt.get("load_bearing") and mt["status"] == "open",
+          "main_thread() picks the load_bearing OPEN decision as the thing to drive")
 
     # --- plan-quiz coverage: quiz after any plan change, only the new/changed/unmastered ---
     prog0 = {}
@@ -73,7 +77,7 @@ def main():
     check(any(n["id"] == d0["id"] for n in progress.targets([edited], prog1)),
           "editing a mastered decision (fingerprint change) re-opens it for quizzing")
 
-    total = 17
+    total = 18
     print(f"\n{total - fails}/{total} passed")
     sys.exit(1 if fails else 0)
 

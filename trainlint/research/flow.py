@@ -58,18 +58,28 @@ def _tree_fp(nodes):
 
 def context_briefing(name, nodes):
     goal = _read(HERE / f"goal.{name}.txt")
-    b = lint.brief(name)
     parts = [f"[trainlint:context] project '{name}' — re-establishing context."]
     if goal:
         parts.append("goal: " + goal)
-    pb = plan.brief(name)
-    if pb:
-        s = plan.summary()
+    pl = plan.load(name)
+    if pl:
+        # understanding-gate — LEAD with it (prominent), at the session boundary, never mid-work:
+        # the user is meant to fully understand the project before working, via the plan-quiz.
+        try:
+            tg = progress.targets(pl, name=name)
+        except Exception:
+            tg = []
+        if tg:
+            parts.append(f"⚠️ you have NOT fully walked this project yet — {len(tg)}/{len(pl)} "
+                         f"decisions un-mastered. Understanding them comes first: `/trainlint:quiz` "
+                         f"(soft — it only drills the un-mastered ones).")
+        s = plan.summary(pl)
         nxt = (s["open"] or s["unverified"])
-        tail = f" — next: {nxt[0]['decision']}" if nxt else ""
-        parts.append(pb + tail)
+        tail = f" — next decision: {nxt[0]['decision']}" if nxt else ""
+        parts.append(plan.brief(name) + tail)
     else:
         parts.append("no plan yet — draft the project's decisions with `/trainlint:plan`")
+    b = lint.brief(name)
     parts.append(f"search tree: {len(nodes)} directions"
                  + (f"; {b}" if b else "; no stalled branches / ready papers right now"))
     parts.append("full picture any time: `/trainlint:viz` (or python3 research/viz.py)")
@@ -80,17 +90,6 @@ def _viz_directive():
     return ("[trainlint:viz] the search tree changed since you last saw it — render it and send "
             f"me the picture: run `python3 {HERE / 'viz.py'}` and SendUserFile the PNG it prints "
             "(on mobile it lands as a zoomable image).")
-
-
-def _quiz_directive(n):
-    return (f"[trainlint:quiz] {n} plan decision(s) are new / changed / not-yet-mastered since you "
-            "last walked them — run `/trainlint:quiz` to be drilled on JUST those (it skips the ones "
-            "you've already mastered). Each is posed as its governing principle, graded, and the "
-            "misses drilled with fresh scars. Soft — 'skip' exits, never blocks my work.")
-
-
-def _quiz_fp(targets):
-    return hashlib.md5((";".join(sorted(n.get("id", "") for n in targets))).encode()).hexdigest()
 
 
 def main():
@@ -117,18 +116,9 @@ def main():
             _write(STATE / f"{name}.treefp", fp)
             if prev and nodes:
                 out.append(_viz_directive())
-        # (3) plan-quiz nudge — fires whenever the set of new/changed/unmastered plan
-        # decisions changes (i.e. after any plan edit), and ONLY over those decisions.
-        try:
-            pl = plan.load(name)
-            tg = progress.targets(pl, name=name) if pl else []
-        except Exception:
-            tg = []
-        if tg:
-            qfp = _quiz_fp(tg)
-            if qfp != _read(STATE / f"{name}.quizfp"):
-                _write(STATE / f"{name}.quizfp", qfp)
-                out.append(_quiz_directive(len(tg)))
+        # NOTE: the plan-quiz is intentionally NOT nudged mid-turn here. The understanding-gate
+        # lives at the SessionStart briefing (a session boundary) + the plan-aware doorman flags
+        # acting on an un-mastered decision. Quizzing mid-work is the exact interruption we avoid.
         _emit("\n".join(out), event)
 
     sys.exit(0)

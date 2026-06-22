@@ -29,6 +29,10 @@ try:
     import plan as planlib  # noqa: E402
 except Exception:  # pragma: no cover
     planlib = None
+try:
+    import progress as progresslib  # noqa: E402  (plan-quiz mastery state)
+except Exception:  # pragma: no cover
+    progresslib = None
 
 
 def _haystack(data):
@@ -80,6 +84,13 @@ def assess(data):
         return [], []
     if not located:
         return [], []
+    # mastery state — the soft understanding-gate: acting on a decision you haven't walked in
+    # quiz gets flagged (never blocked). Fail-open to "treat as mastered" so a missing state
+    # file never nags.
+    try:
+        prog = progresslib.load(planlib._active()) if progresslib else {}
+    except Exception:
+        prog = {}
     session = data.get("session_id", "")
     items = []
     for d in located:
@@ -91,18 +102,20 @@ def assess(data):
         decision = d.get("decision", "")
         why = (" " + d["why"]) if d.get("why") else ""
         choice = d.get("choice", "")
+        gate = ("" if prog.get(did, {}).get("mastered")
+                else f" (you haven't walked this decision in quiz yet — `/trainlint:quiz {did}`)")
         if status == "open":
             items.append({"level": "escalate", "plan_decision": did,
                           "message": (f"⟦plan:{did}⟧ this acts on an UNDECIDED decision — "
                                       f"«{decision}» (principle: {princ}).{why} "
-                                      f"Decide/confirm it before proceeding.")})
+                                      f"Decide/confirm it before proceeding.{gate}")})
         elif status == "decided":
             items.append({"level": "coach", "plan_decision": did,
                           "message": (f"⟦plan:{did}⟧ decided but UNVERIFIED — «{decision}» → "
                                       f"{choice} (principle: {princ}).{why} "
-                                      f"Make the code match the choice, then verify it holds.")})
+                                      f"Make the code match the choice, then verify it holds.{gate}")})
         else:  # verified
             items.append({"level": "coach", "plan_decision": did,
                           "message": (f"⟦plan:{did}⟧ settled decision — «{decision}» → {choice} "
-                                      f"(principle: {princ}).{why} Don't drift from it.")})
+                                      f"(principle: {princ}).{why} Don't drift from it.{gate}")})
     return items, located

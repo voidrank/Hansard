@@ -107,6 +107,8 @@ def run(data, checks=None):
         out.append({
             "name": c.get("name", ""),
             "level": c.get("level", "escalate"),
+            # verifier-backed = machine-certain; the plan-aware downgrade must never touch it
+            "certain": bool(c.get("verifier")),
             "message": facts.expand(msg_override or c.get("message", "")),
         })
     return out

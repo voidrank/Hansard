@@ -23,6 +23,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import prefilter      # noqa: E402
 import checks         # noqa: E402
 import classifier     # noqa: E402
+import planaware      # noqa: E402
 import quiz           # noqa: E402
 
 _RANK = {"reject": 3, "escalate": 2, "coach": 1}
@@ -38,6 +39,21 @@ def decide(data):
         return None
 
     items = checks.run(data) + classifier.classify(data)
+
+    # plan-aware routing: locate this action on the project PLAN and route by the
+    # touched decision's status + principle (open->escalate, decided/verified->coach),
+    # surfaced once per session per decision. Then DOWNGRADE: if the action's decision
+    # is settled (verified), a keyword-only (non-certain, non-plan) escalation is most
+    # likely a false alarm — turn it into a coach so the human isn't interrupted. A
+    # machine-certain (verifier-backed) item is never downgraded.
+    plan_items, located = planaware.assess(data)
+    items = items + plan_items
+    if any(d.get("status") == "verified" for d in located):
+        for it in items:
+            if (_level(it) == "escalate" and not it.get("certain")
+                    and not it.get("plan_decision")):
+                it["level"] = "coach"
+                it["message"] = "(plan: this decision is settled) " + it.get("message", "")
 
     # quiz-gate (opt-in, non-blocking): surface ONE relevant question to make the
     # operator prove they understand before acting. Escalate-class, never blocks.

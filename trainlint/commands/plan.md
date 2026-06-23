@@ -46,7 +46,15 @@ left the operator lost ("what's DAC? what's s2?" mid-project). Rules for this ex
   first time a name appears (a codec like DAC, a stage like "s2", an abbreviation), say what it is.
 - **Ground every claim in the actual code** — cite `file:line` for each structural fact. No
   "it probably works like…". If you state it, you've read it.
-- **Name every frozen component and its exact contract** (sample rate, power, n_codebooks, …).
+- **Name every frozen component and CAPTURE its exact contract** (sample rate, power, n_codebooks,
+  config_name, …). This is the methodology that turns the lint from *reciting discipline* into a
+  *precise catch*: DERIVE each value by READING the component's real source — the code that
+  trained/froze it, its config file, or the checkpoint metadata — never type a number from memory;
+  mark UNKNOWN if you can't read it. Record what you read into `project.<name>.json` as
+  `"codec_contract": {param: "value", ...}`. The `check_frozen_encode` verifier then flags any encode
+  param that DIFFERS from this contract, value-for-value (the power=2.0 / wrong-sample-rate scar),
+  the moment it's typed. The verifier is the general mechanism; the contract is per-project facts you
+  read from that project — so the precise catch generalises to any codebase without hard-coding.
 - **State where the project IS now vs the target.**
 - **Mark unknowns as UNKNOWN, loudly.** A clearly-marked hole is context; a smooth guess is a landmine.
 

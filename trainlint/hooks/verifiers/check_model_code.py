@@ -11,6 +11,11 @@ func(text) -> (fire: bool, message: str|None).
 """
 import re
 
+try:
+    import modeljudge  # opt-in Haiku refinement; on sys.path (hooks/) when run through the router
+except Exception:  # pragma: no cover
+    modeljudge = None
+
 _FWD_KW = re.compile(r"attention_mask|is_causal|causal_mask|attn_mask|softmax\(|\btop_p\b|\btop_k\b|\bsampler\b|def generate", re.I)
 _FWD_STRONG = re.compile(r"attention_mask|is_causal|causal_mask|attn_mask|softmax\(|def generate", re.I)
 _LOSS_KW = re.compile(r"text_loss|cross_entropy.*labels|F\.cross_entropy", re.I)
@@ -35,6 +40,9 @@ def forward(text):
     # a lone weak keyword (e.g. a DataLoader `sampler=`) with no model-code context -> not forward
     if not _FWD_STRONG.search(text) and not _CODE.search(text):
         return (False, None)
+    # opt-in Haiku precision: catch the FP regex can't — a data script that `import torch` etc.
+    if modeljudge is not None and modeljudge.is_not_model_code(text):
+        return (False, None)
     return (True, "VERIFY (confirmed model code, not a config): this edit touches forward / mask / "
                   "sampling / generate logic — correctness can't be auto-checked, only a human reading "
                   "it can, and a mistake here is a silent disaster. Have the user review this diff.")
@@ -47,6 +55,8 @@ def loss(text):
         return (False, None)              # the AR off-by-one slice IS present -> fine
     if _is_config(text) or not _CODE.search(text):
         return (False, None)              # a yaml/config that merely contains 'loss'
+    if modeljudge is not None and modeljudge.is_not_model_code(text):
+        return (False, None)              # opt-in Haiku: a data/config script, not a loss fn
     return (True, "VERIFY (confirmed a loss function, not a config): edited the loss but the AR "
                   "off-by-one slice (logits[:,:-1] vs labels[:,1:]) is missing — echo-collapse (one "
                   "token repeated forever) comes from exactly this. Confirm the shift is still there.")

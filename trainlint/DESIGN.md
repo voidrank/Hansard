@@ -125,10 +125,36 @@ few. "Whether the user should be told" is itself a design dimension:
 
 - Just "how to do the job well" → silent (the user didn't ask to see your checklist).
 - Changed/violated the user's instruction, or makes the user carry risk without knowing → speak up.
-- Irreversible / trust-critical / a machine-certain violation → bounce.
+- Irreversible / trust-critical / a machine-certain violation → bounce. (Plus the ONE principle-based block: high-stakes work on an un-quizzed decision — see §5b.)
 
 When adding a rule, **default to coach**; only raise to escalate once you've thought through "why the user must know"; only raise to reject when the
 machine is "100% certain this is a violation and should be bounced."
+
+---
+
+## 5b. The ONE principle-based block: the high-stakes quiz gate (a deliberate, narrow exception)
+
+§5 says block only on machine-certain *facts*; §7 records that a blanket "hard gate + receipt" was tried and **rejected**. One narrow exception was
+later adopted **on purpose**, because the soft version measurably failed: in real sessions the plan-quiz GATE fired and was ignored ~100% of the time
+(0 quizzes), so high-stakes work kept happening on decisions the operator had never drilled. A nag nobody acts on is worse than nothing — it trains you to ignore popups.
+
+So `planaware` now **BLOCKS** (`reject` → `permissionDecision: deny`) when **all** of these hold:
+- the action is a **tool** action (PreToolUse) — never a prompt;
+- it touches a plan decision whose `phase` is **high-stakes** (`model` / `loss` / `train`);
+- that decision is **not yet `mastered`** in the quiz.
+
+The deny instructs the agent to QUIZ the user on the decision's principle, then run `python3 research/progress.py mark <id>` to record mastery; the same
+action then goes through. (A single action can touch several decisions — you must clear **each** un-mastered high-stakes one. Keep `match` regexes tight so an edit doesn't trip unrelated gates.)
+
+**Why this is NOT the rejected receipt system (§7):**
+- **Narrow** — only high-stakes phases + tool events. Everything else stays soft (coach/escalate).
+- **Clearable in-session** — a real quiz + `mark` lifts it; an explicit "skip" + `mark` also lifts it. No external process, no hash-bound receipt.
+- **Catch-22-guarded** — the `progress.py mark` command is exempt from the gate, so the clear-path can never itself be blocked.
+- **Fail-open** — any error in planaware → no items; it blocks ONLY via `permissionDecision`, never an exit code, so it still can never lock the session (§4).
+- **Not deduped** — it fires on *every* attempt (only `mark` clears it), unlike the once-per-session soft reminders.
+
+This is the single place plan/principle knowledge is allowed to block. **Keep it narrow.** Widening the high-stakes set, or gating prompts, drifts back
+toward the rejected receipt system — don't.
 
 ---
 
@@ -160,6 +186,8 @@ then add one `tests/cases.jsonl` case + run `python3 tests/run.py`.
 
 - **Hard gate + receipt system** (every action must present a hash-bound PASS receipt to be allowed through): too heavy, too brittle,
   a missing receipt jams the whole flow and forces the user through a process. **Rejected**, replaced by the current soft injection.
+  (A *narrow* hard gate was later adopted for high-stakes un-quizzed decisions ONLY — see §5b. It avoids every failure mode above by being
+  scoped to 3 phases, clearable in-session via quiz+`mark`, catch-22-guarded, and fail-open — it is the deliberate exception, not a reopening of this door.)
 - **Keyword regex as the sole filter at the door**: default-closed, rephrase it and it leaks. **Rejected**, the door changed to a structural filter that only looks at
   "read/write · internal vs external."
 - **Letting a (small) model judge right/wrong directly**: a probabilistic judge will err across "this many checks." **Rejected**, the model only sorts.

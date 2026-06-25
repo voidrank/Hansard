@@ -112,9 +112,11 @@ And given it's a linter:
   breakthrough — so Trainlint *hints*; it never prunes your search or restricts the agent's
   exploration. It corrects the biases of unsupervised work (sunk cost, cargo-cult, blaming
   the data) with **information, not control**. The judgment stays yours.
-- **It can never lock you out.** When it does block a machine-certain mistake, it does so with
-  a *permission decision*, never by crashing — a bug in the guard must always be safer than
-  the bug it guards against. Fail-open by construction.
+- **It can never lock you out.** It blocks in only two cases — a machine-certain mistake, or
+  high-stakes work (model/loss/training) on a decision you haven't been quizzed on — and always via
+  a *permission decision*, never by crashing. The quiz block is always clearable in the moment (answer
+  the question, or skip), and a bug in the guard must always be safer than the bug it guards against:
+  fail-open by construction.
 - **Route each call to whoever can actually judge it.** Machine-checkable → bounced silently
   (you're undisturbed); only-a-human-can-verify (a forward/mask change) → escalated to you;
   everything else → a quiet nudge to the agent. A model may *route*, but it never judges

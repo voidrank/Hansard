@@ -72,3 +72,25 @@ def mark(name, node, mastered=True):
         prog[did] = {"fp": fingerprint(node), "mastered": bool(mastered)}
         save(name, prog)
     return prog
+
+
+if __name__ == "__main__":
+    # CLI used by the hard gate's clear-loop: after the agent quizzes the user on a high-stakes
+    # decision (and they pass, or explicitly skip), it runs `python3 progress.py mark <id>` to
+    # record mastery — which is the ONLY thing that clears the gate. Usage:
+    #   python3 progress.py mark <decision-id>            (active project)
+    #   python3 progress.py mark <project> <decision-id>
+    import sys
+    a = sys.argv[1:]
+    if len(a) >= 2 and a[0] == "mark":
+        sys.path.insert(0, str(ROOT))
+        import plan as planlib
+        name, did = (planlib._active(), a[1]) if len(a) == 2 else (a[1], a[2])
+        node = planlib.by_id(planlib.load(name), did)
+        if not node:
+            print(f"no decision '{did}' in the plan for project '{name}'")
+            sys.exit(1)
+        mark(name, node, mastered=True)
+        print(f"✓ marked '{did}' mastered for '{name}' — the hard gate will now let it through")
+    else:
+        print("usage: python3 progress.py mark [<project>] <decision-id>")

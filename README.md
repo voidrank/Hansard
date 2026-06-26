@@ -2,170 +2,156 @@
 
 ### It trained fine. That's the bug.
 
-**A linter for AI/ML training — and for the AI agent doing it.** It catches the *silent*
-mistakes (the ones that don't crash, where loss keeps dropping and the model is quietly
-wrong) at the moment they happen — before they cost you a week of GPU.
+Your AI agent now writes your training code — fast, and just as confident when it's wrong. The worst
+training bugs don't crash. The loss still drops, the run looks fine, and a week later you find that
+one preprocessing default was wrong the whole time.
 
-> You lint your code. Your coding agent is now writing your *training* code. Lint that too.
+**Trainlint is the senior researcher looking over your agent's shoulder** — always on, never tired.
+It has the three habits an experienced collaborator would:
+
+1. It **catches the silent mistake the moment it's typed.**
+2. It **won't let you move on a decision you can't explain.**
+3. It **remembers every branch you've already burned.**
+
+The judgment stays yours. It just keeps the work honest.
+
+> You lint your code. Your agent now writes your *training* code. This lints that.
 
 ---
 
-## The week you'll never get back
+## 1. It catches the silent mistake the moment it's typed
 
-You change one thing, launch, wait. Loss drops, nothing crashes — the output is just *off*.
-Days of retraining and tuning later, you diff against the reference line by line and find it:
-**one preprocessing default, silently wrong.** The run was dead on arrival. Nothing told you,
-because nothing crashed.
+Every move the agent makes — change a config, launch a run, touch the model — it sees. And like a
+good senior colleague, it reacts in proportion: most of the time nothing, now and then one of three
+words.
 
-Now an AI agent writes that code for you, just as confidently. Reading every line against a
-reference by hand is an inhuman job — that's a linter's job. **Trainlint checks the line the
-moment it's written.**
+| | when | who it bothers |
+|---|---|---|
+| 🚫 **turns it around** | a known-bad setting it's sure about | nobody — the agent just redoes it |
+| 🙋 **taps your shoulder** | a change only a human can judge | you — it hands you the diff |
+| 👈 **mutters to the agent** | a small "maybe check this" | the agent only |
+| 😶 **says nothing** | 99% of the time | nobody |
 
-![the frustrating loop vs. catching it at write time](docs/the-loop.png)
+The skill is in what it *doesn't* send you. It taps your shoulder only for the one case a machine
+can't judge and a quiet word can't fix — so you never end up muting it.
 
-## How it works — it's a bouncer at the door
-
-Every time the agent goes to do something — change a config, launch a run, touch the model
-code — it has to walk past one bouncer. The bouncer has seen runs blow up before. They size up
-the move and do one of four things:
-
-🚫 **"Nope, not this one."** — They recognize a move that's *already* sunk a run before: a
-known-bad setting, the kind of silent misconfig that doesn't crash but quietly poisons the
-output. They don't lecture, they don't ping you — they just turn it around at the door and say
-*redo it*. A known disaster never makes it inside, and **your phone stays quiet**, because why
-would you need to rule on something they're already sure about?
-
-🙋 **"Hey — you'll want to see this."** — This is the only move that taps *you* on the
-shoulder. Someone changed something no machine can check — a tweak to how the model trains or
-sees its input, where there's no test that says right or wrong, but if it *is* wrong it eats a
-week. So they hand you the diff: *you* look. Because here, your eyes are the only instrument that
-works.
-
-👈 **"Psst — double-check that."** — Not sure, not fatal, just worth a word. They lean over and
-mutter it to the agent, who can fold it in or shrug it off. You never even hear it happen.
-
-😶 **(says nothing)** — 99% of the time. Nothing's off, the door's open, the agent walks
-through.
-
-The trick is what *doesn't* reach you. Not "everything suspicious" — only that one sliver where
-no machine can check it and no quiet word can fix it. **That's** why you don't end up muting
-them: they only ever bug you when you're genuinely the last line of defense.
-
-And two house rules keep them safe to leave on:
-
-- **They bounce a move, never your direction.** Even a "nope" stops *one action* — your overall
-  approach is still yours. (A plateau is often right before the breakthrough; they won't prune
-  your search.)
-- **They can't ever lock you out.** They turn a bad move away with a polite "denied," never by
-  knocking the door off its hinges — a bug in the bouncer is always safer than the bug they're
-  there to stop.
-
-### What that looks like
-
-Say the agent writes this mid-flow, confident as ever:
+**What that looks like.** Say the agent writes this, mid-flow:
 
 ```python
 mel = MelSpectrogram(sample_rate=24000, n_mels=128)   # power defaults to 2.0
 ```
 
-No machine can rule on whether that's right — so the bouncer stops and hands *you* the diff:
+No machine can say if that's right — so Trainlint stops and hands you the diff:
 
 > *You changed the mel preprocessing fed to the frozen codec, but it isn't aligned with its
 > training config — don't trust library defaults. Please confirm.*
 
-The codec was trained on `power=1.0`; `2.0` is a different spectrogram the model would have
-silently learned around. Nothing crashed. No test went red. That's exactly why it costs a
-week — and exactly the week you keep.
+The codec was trained on `power=1.0`. `2.0` is a different spectrogram; the model would have quietly
+learned around it. Nothing crashed. No test went red. That's the week you keep.
 
-## What it catches — silent-wrong has only a few shapes
+![the frustrating loop vs. catching it at write time](docs/the-loop.png)
 
-A bug that crashes is the easy kind — you fix it and move on. The expensive ones are *silent*:
-loss still drops, nothing errors, the model is just quietly wrong. They feel infinitely varied,
-but they aren't — they keep coming back in a handful of shapes. Trainlint knows the shapes.
+**It knows the shapes silent bugs come in.** They feel endless, but they aren't — a few families
+cover almost all of them:
 
-**1. Training and inference quietly disagree.** The model learns under one setup and runs under
-another: input preprocessing that no longer matches the frozen encoder it was built for; a mask
-or an off-by-one shift that's there at training time but not at generation (or the reverse);
-padding the tokenizer was never trained on. Each one feeds the model something it never saw —
-nothing crashes, the output is just subtly, persistently off.
+1. **Training and inference quietly disagree** — preprocessing that no longer matches the frozen
+   encoder, a mask or off-by-one present in training but not generation, padding the tokenizer never
+   saw.
+2. **The model takes a shortcut you left open** — hand it a crutch (a peek at the answer in
+   training) and it leans on that, not the real signal. Great scores with it; collapse without.
+3. **You're not measuring the model** — an eval or demo that looks the same whether the model is
+   great or broken.
+4. **The value you wrote isn't the value that ran** — config piles up from flags, files, env, and
+   defaults; the last writer wins, silently.
+5. **The ground rots under you** — storage that corrupts under load: fine in a 10-minute test,
+   fatal six hours in.
 
-**2. The model takes the shortcut you left open.** Hand a weak component an easy crutch — say, a
-peek at the answer during training — and it learns to lean on the crutch instead of the hard
-signal you actually care about. Scores *with* the crutch look great; take it away at generation
-and the whole thing collapses.
+Each is a **principle, not a fact about your project** — it survives a move to a new model or
+codebase. Your specifics (which encoder, which path, which number) live in one swappable facts file.
+That's ~30 rules today, every one an instance of these five.
 
-**3. You're not actually measuring the model.** An eval or a demo that would look the same
-whether the model is brilliant or broken — a proxy that flatters you while telling you nothing.
+**And it makes the agent show its work.** The moment the agent wires a dataset into a model or
+touches the loss, Trainlint makes it trace one batch all the way through — loader → every layer →
+loss — writing down not just each shape but what every axis *means* and the lineup a silent bug
+would break: an in-place vs shifted loss, a weight broadcast onto the wrong axis, a mask that's the
+right shape but the wrong meaning. The shapes matching is the easy half; these are the bugs where
+they match and it's *still* wrong.
 
-**4. The value you wrote isn't the value that ran.** Config stacks up from flags, files, env,
-and framework defaults, and the last writer silently wins. You burn a day tuning a number that
-was overridden before the run even started.
+Two things make it safe to leave on:
 
-**5. The ground rots under you.** Training reads from storage that corrupts under concurrent
-load — fine in a ten-minute smoke test, fatal six hours into the real run.
+- **It blocks a move, never your direction.** A "turn it around" stops one action, not your
+  approach. A plateau is often right before a breakthrough — it won't prune your search. Information,
+  not control; the judgment stays yours.
+- **It can never lock you out.** It blocks in only two cases — a mistake it's certain about, or
+  high-stakes work on a decision you haven't been quizzed on (habit 2) — always with a polite
+  "denied," never by crashing. A bug in the guard is safer than the bug it guards against: it fails
+  open by design.
 
-Each shape is a **principle, not a project fact** — it survives a move to a new model or
-codebase. Your project's specifics (which encoder, which path, which magic number) live in one
-swappable facts file; the shapes don't change. That's ~30 rules today, every one an instance of
-the families above.
+## 2. It won't let you move on a decision you can't explain
 
-## It doesn't stop at catching — it makes the work *legible*
+A silent bug isn't the only way to lose a week. You can also build the wrong thing — start before
+you understand what you're building, or commit to a decision you only half-hold. A good senior
+researcher makes you slow down at exactly those moments.
 
-Three newer moves go past spotting a bad line:
+`/trainlint:plan` walks the whole project in plain language — every term defined (no "wait, what's a
+DAC?" three weeks in), every claim tied to the actual code — and breaks it into the **decisions**
+that quietly determine whether it works. Then it **quizzes you** on each until it sticks.
 
-- **Prove the data actually reaches the model.** The moment the agent wires a dataset into a
-  model or touches the loss, Trainlint makes it *derive the whole shape-flow* first — one batch
-  from the loader, through every layer, to the loss scalar — writing down not just each tensor's
-  shape but what every axis *means* and the alignment a silent bug would break: in-place vs
-  shifted loss, a weight broadcasting onto the wrong axis, a mask that's the right shape but the
-  wrong semantics. The shapes lining up is the easy half; these are the bugs where they line up
-  and it's *still* wrong.
+From then on it stays with you two ways:
 
-- **You don't get to skip the understanding.** Before high-stakes work — model, loss, training —
-  on a decision you've never been quizzed on, it stops and asks *you* to explain the principle
-  behind it. Not to gatekeep: the silent bugs come from acting on a decision you only half-hold.
-  Answer it (or say "skip") and it clears on the spot.
+- **A compass, every turn** — your **goal**, the **main thread** (the one open question that gates
+  everything right now), and the **next action**. Lose the goal and you wander; lose the thread and
+  you scatter.
+- **A gate on the un-understood** — before high-stakes work (model, loss, training) on a decision
+  you've never been quizzed on, it stops and asks *you* to explain it first. Not to gatekeep — the
+  silent bugs come from acting on a decision you only half-hold. Answer it (or say "skip") and it
+  clears. It runs on the same plan the catch-layer uses: it knows which decision an edit touches, so
+  it speaks up on the open ones and stays quiet on the settled.
 
-- **The writeup has to read like a person wrote it.** When the agent signs off with a status
-  report, a last doorman checks it was written for a teammate who *didn't* build this — a one-line
-  where-we-stand, a real map, plain meanings instead of a wall of insider codenames — and bounces
-  it once for a rewrite if not. The report's readability is a contract, not a hope.
+It holds the agent to the same bar. When the agent signs off with a status report, Trainlint checks
+it was written for a teammate who *didn't* build this — a one-line where-we-stand, a real map, plain
+words instead of a wall of insider names — and bounces it once for a rewrite if not.
 
-## Why it's designed this way
+## 3. It remembers every branch you've already burned
 
-**Why a linter at all — not a prompt, a skill, or a workflow?** The failure mode dictates the
-form. These bugs are *silent, continuous, and you don't know you're making them.* A static prompt
-(CLAUDE.md) is persuasion you can ignore — always-on noise, blind to the actual diff, and it can't
-stop anything. A skill or a workflow has to be *invoked* — but you'd never invoke a "check my
-training code" step at the exact moment you drop an off-by-one, and standing up a multi-agent
-workflow for every edit is both too heavy and backwards: it makes *you* run the orchestration out
-front, when what you want is the opposite — a copilot working quietly behind you, taking the grunt
-work off your hands, unasked. Only something **ambient** (fires on every action, unbidden), **at the
-moment**, **action-aware** (sees the diff), and **able to actually stop the bad one** catches a
-mistake you didn't know you were making — that's a linter. (Trainlint still uses commands for the
-deliberate parts — `plan`/`quiz`/`viz`/`lint`/`init` — and ships its rules just-in-time, not always-on.)
+The slowest way to lose a week is going in circles — over-tuning a dead branch, re-running what you
+already ruled out, hitting a wall a paper would have explained. After enough sessions you don't
+remember either. A senior researcher does.
 
-And given it's a linter:
+So Trainlint keeps a map. It rebuilds the **search tree** of directions you've tried — from traces
+you already leave (run names + a durable log), nothing you maintain by hand. Then it hints, never
+prunes:
 
-- **A linter, not a gate.** Research is non-monotonic — a plateau often comes right before a
-  breakthrough — so Trainlint *hints*; it never prunes your search or restricts the agent's
-  exploration. It corrects the biases of unsupervised work (sunk cost, cargo-cult, blaming
-  the data) with **information, not control**. The judgment stays yours.
-- **It can never lock you out.** It blocks in only two cases — a machine-certain mistake, or
-  high-stakes work (model/loss/training) on a decision you haven't been quizzed on — and always via
-  a *permission decision*, never by crashing. The quiz block is always clearable in the moment (answer
-  the question, or skip), and a bug in the guard must always be safer than the bug it guards against:
-  fail-open by construction.
-- **Route each call to whoever can actually judge it.** Machine-checkable → bounced silently
-  (you're undisturbed); only-a-human-can-verify (a forward/mask change) → escalated to you;
-  everything else → a quiet nudge to the agent. A model may *route*, but it never judges
-  correctness — that's for deterministic checks, or for you.
-- **The knowledge is the principle; the project is just the scar.** Every rule is a law that
-  survives a project change; the specifics (paths, calls, numbers) live in one swappable facts
-  file. A wrong default isn't a rule — it's an *instance* of "match the frozen component's config."
+- when you've over-tuned one branch past the point of return
+- when a stuck branch is the *trunk's* fault, not the branch's
+- which paper explains the wall you *just* hit — shown when you hit it, not early (reading it early
+  is cargo-cult)
 
-The full rationale (the scars each rule came from) is in
-[DESIGN.md](trainlint/DESIGN.md) — read it before adding rules.
+![an example search tree](docs/search-tree.png)
+
+**Nothing to maintain.** The tree is rebuilt from traces every run; the one irreplaceable thing —
+"why we abandoned X" — is saved to git before a session compacts. See it any time with
+`/trainlint:viz`.
+
+## Why a colleague — not a prompt, a skill, or a workflow
+
+Why this form, and not a doc or a command? The mistakes are silent, constant, and you don't know
+you're making them.
+
+- A **prompt** (CLAUDE.md) is advice you can ignore — always-on noise, blind to the actual diff,
+  unable to stop anything.
+- A **skill or workflow** has to be *invoked* — but you'd never call a "check my training code" step
+  at the exact second you drop an off-by-one, and running a workflow per edit is heavy and backwards.
+
+Only something **ambient** works: on every action, unasked, seeing the real diff, able to stop the
+bad one. That's what a senior colleague is — present, not summoned.
+
+One rule keeps it honest: **route each call to whoever can actually judge it.** Machine-checkable →
+turned around silently. Only a human can tell → sent to you. Everything else → a quiet word to the
+agent. A small model may help *route* a call, but it never judges whether code is correct — that's
+for a deterministic check, or for you.
+
+The scars behind each rule are in [DESIGN.md](trainlint/DESIGN.md) — read it before adding rules.
 
 ## Install
 
@@ -174,61 +160,22 @@ The full rationale (the scars each rule came from) is in
 /plugin install trainlint@trainlint
 ```
 
-Pure Python standard library — **zero dependencies**. Then it just runs. See
+Pure Python standard library — **zero dependencies.** Then it just runs. See
 [INSTALL.md](INSTALL.md) for a single-machine (no-plugin) setup.
 
 ## Use it on your project
 
 ```
 /trainlint:init <name>      # register a project (thin — no TODO ceremony)
-/trainlint:plan             # understand it end-to-end, decompose into decisions, get quizzed
-/trainlint:quiz             # drill the decisions + the sticky concepts you keep forgetting
+/trainlint:plan             # understand it end-to-end, break it into decisions, get quizzed
+/trainlint:quiz             # drill the decisions + the concepts you keep forgetting
 /trainlint:viz              # see your search tree
 /trainlint:lint             # directionality + "read this now" hints
 ```
 
-## Understand it first, then stay on the thread
-
-A silent bug isn't the only way to lose a week. You can also start building before you understand
-what you're building, or drift off the one thing that actually matters. So Trainlint front-loads
-understanding and then keeps you pointed.
-
-`/trainlint:plan` walks the whole project end-to-end **in plain language** — every term defined (no
-"wait, what's a DAC?" three weeks in), every claim grounded in the actual code — and decomposes it
-into the **decisions** that silently determine correctness. Then it **quizzes you** on each until
-you actually hold it; a concept you keep forgetting gets drilled until it sticks.
-
-From then on a **compass** stays lit every turn: your **goal**, the **main thread** (the one
-load-bearing open question that gates everything right now), and the **next action**. It keeps the
-agent — and you — on the thing that matters instead of polishing side-quests. Lose the goal and you
-wander; lose the thread and you scatter. The compass is how the work stays *motivated and focused*.
-The bouncer uses the same plan: it knows which decision an edit touches, so it escalates the genuinely
-unresolved one and stays quiet on the settled ones — routing by the decision, not by keywords.
-
-## There's a second layer: it maps where you've been
-
-The bouncer stops single wrong *moves*. But there's a slower way to lose a week: going in
-**circles** — over-tuning a dead branch, re-running what you already ruled out, hitting a wall a
-paper would've explained.
-
-So Trainlint also keeps a map. It reconstructs the **search tree** of directions you've tried —
-rebuilt every run from the traces you already leave (your run names + a durable, compaction-proof
-log), never something you hand-maintain. Then it *hints*, never prunes:
-
-- when you've over-tuned one branch past diminishing returns
-- when a stalled branch might be the *trunk's* fault, not the branch's
-- which paper explains the wall you **just** hit — surfaced just-in-time, not by recency
-  (reading it earlier is cargo-cult)
-
-![an example search tree](docs/search-tree.png)
-
-**Nothing to maintain, nothing to lose.** The tree is rebuilt from traces every run; the
-irreplaceable "why we abandoned X" is harvested into git before a session compacts — anchored to
-your work, never to a session (which may never end). See it any time with `/trainlint:viz`.
-
 ## Why it stays general
 
-The **mechanism is fixed**, the **principles are portable**, and the **project facts are a
-swappable file**. Porting to another project = write one `project.<name>.json`, the rules
-unchanged. Read [DESIGN.md](trainlint/DESIGN.md) before adding rules — it's the meta-knowledge
-that keeps the principles from drifting as the rule list grows.
+The **mechanism is fixed**, the **principles are portable**, the **project facts are one swappable
+file.** Porting to a new project = write one `project.<name>.json`; the rules don't change. Read
+[DESIGN.md](trainlint/DESIGN.md) before adding rules — it keeps the principles from drifting as the
+list grows.

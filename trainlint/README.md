@@ -43,6 +43,16 @@ fork escalates, a **settled** one stays a quiet coach (and downgrades a keyword-
 probe scripts don't trip the "needs your eyes" alarm). A still-unmastered decision gets a gentle
 "you haven't walked this in quiz yet" flag.
 
+## The report doorman (the `Stop` event)
+
+A finished message is *prose*, not a tool action — so the action pipeline above has nothing to
+bind to, and the explain-like-a-person voice rules used to be persuasion the model drops at large
+context. `reportcheck.py` binds to `Stop`/`SubagentStop`: when the final message is a plan REPORT
+(cites ≥2 active-plan decision ids, long-form) that skips the stance line or the map, leads with
+bare decision-ids, or leans on undefined jargon, it bounces **once** (`decision: block`) for a
+rewrite — loop-safe via `stop_hook_active`, fail-open on any error. Deterministic and conservative:
+it gates only objective, spec-mandated misses, never a judgement about "good prose".
+
 ## Three layers (mechanism / principle / facts)
 
 - **mechanism** — `hooks/*.py` (router pipeline). Fixed.
@@ -62,8 +72,9 @@ trainlint/
 ├── hooks/
 │   ├── router.py          orchestrator (fail-open, exit 0, permissionDecision)
 │   ├── prefilter.py  checks.py + checks.jsonl  classifier.py  planaware.py  facts.py
+│   ├── reportcheck.py     the REPORT doorman (Stop event): plan-report readability gate
 │   ├── hooks.json
-│   └── verifiers/         REAL checks (mel-power arg parse, manifest-leak, effective-lr)
+│   └── verifiers/         REAL checks (mel-power, frozen-encode, manifest-leak, effective-lr, model-code, shape-flow)
 ├── research/              the PROJECT layer (plan / compass / search-tree), per-project facts
 │   ├── flow.py            lifecycle hook: context briefing · always-on compass · hints · viz
 │   ├── plan.py            the decision floor-plan + main_thread() selector
@@ -129,9 +140,10 @@ See **[../INSTALL.md](../INSTALL.md)** — the plugin install, verification, opt
 ## Test
 
 ```bash
-python3 tests/run.py              # 21/21 — the action doorman
-python3 tests/test_planaware.py   # 8/8  — plan-aware routing
-python3 research/test_research.py # 18/18 — tree / governor / surfacer / plan / main-thread
+python3 tests/run.py              # 34/34 — the action doorman (incl. shape-flow)
+python3 tests/test_reportcheck.py # 10/10 — the report doorman (Stop event)
+python3 tests/test_planaware.py   # 15/15 — plan-aware routing
+python3 research/test_research.py # 20/20 — tree / governor / surfacer / plan / main-thread
 ```
 
 ## ⚠️ Footgun (we got locked out once)

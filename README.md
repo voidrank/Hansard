@@ -60,6 +60,23 @@ And two house rules keep them safe to leave on:
   knocking the door off its hinges — a bug in the bouncer is always safer than the bug they're
   there to stop.
 
+### What that looks like
+
+Say the agent writes this mid-flow, confident as ever:
+
+```python
+mel = MelSpectrogram(sample_rate=24000, n_mels=128)   # power defaults to 2.0
+```
+
+No machine can rule on whether that's right — so the bouncer stops and hands *you* the diff:
+
+> *You changed the mel preprocessing fed to the frozen codec, but it isn't aligned with its
+> training config — don't trust library defaults. Please confirm.*
+
+The codec was trained on `power=1.0`; `2.0` is a different spectrogram the model would have
+silently learned around. Nothing crashed. No test went red. That's exactly why it costs a
+week — and exactly the week you keep.
+
 ## What it catches — silent-wrong has only a few shapes
 
 A bug that crashes is the easy kind — you fix it and move on. The expensive ones are *silent*:
@@ -89,8 +106,30 @@ load — fine in a ten-minute smoke test, fatal six hours into the real run.
 
 Each shape is a **principle, not a project fact** — it survives a move to a new model or
 codebase. Your project's specifics (which encoder, which path, which magic number) live in one
-swappable facts file; the shapes don't change. That's ~20 rules today, every one an instance of
+swappable facts file; the shapes don't change. That's ~30 rules today, every one an instance of
 the families above.
+
+## It doesn't stop at catching — it makes the work *legible*
+
+Three newer moves go past spotting a bad line:
+
+- **Prove the data actually reaches the model.** The moment the agent wires a dataset into a
+  model or touches the loss, Trainlint makes it *derive the whole shape-flow* first — one batch
+  from the loader, through every layer, to the loss scalar — writing down not just each tensor's
+  shape but what every axis *means* and the alignment a silent bug would break: in-place vs
+  shifted loss, a weight broadcasting onto the wrong axis, a mask that's the right shape but the
+  wrong semantics. The shapes lining up is the easy half; these are the bugs where they line up
+  and it's *still* wrong.
+
+- **You don't get to skip the understanding.** Before high-stakes work — model, loss, training —
+  on a decision you've never been quizzed on, it stops and asks *you* to explain the principle
+  behind it. Not to gatekeep: the silent bugs come from acting on a decision you only half-hold.
+  Answer it (or say "skip") and it clears on the spot.
+
+- **The writeup has to read like a person wrote it.** When the agent signs off with a status
+  report, a last doorman checks it was written for a teammate who *didn't* build this — a one-line
+  where-we-stand, a real map, plain meanings instead of a wall of insider codenames — and bounces
+  it once for a rewrite if not. The report's readability is a contract, not a hope.
 
 ## Why it's designed this way
 

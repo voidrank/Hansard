@@ -289,3 +289,11 @@ path, never the diff):
 The product is a persisted baseline (`research/shapeflow.<active-project>.md`); on the next change the agent diffs its
 fresh derivation against it and flags which steps moved — the same "record it so the gap is tracked" pattern as
 `concept-gap-quiz`'s glossary.
+
+`derive-the-shape-flow` is the *on-paper* half. Its runnable companion is **`prove-wiring-on-cpu`** (`triggers.jsonl`,
+portable kernel): it fires when you're about to *run* new forward/loss/mask code — a smoke/selftest, "verify the wiring",
+or promoting to a GPU/full-scale launch — and nudges the agent to turn the derived invariants into **runnable asserts**
+plus at least one **behavioral probe** that checks *meaning, not shape* (e.g. perturb a future position and assert an
+earlier output is bit-identical iff causality holds; render the attention mask / loss positions as a grid). Run it with
+a tiny random model — seconds, no checkpoint, no GPU — and promote only when green; a red or absent smoke means the GPU
+run is measuring a bug, not the model. Derive (shape-flow) → prove (smoke + probe) → promote is the engineering pass.

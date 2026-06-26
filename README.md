@@ -130,7 +130,7 @@ prunes:
 - which paper explains the wall you *just* hit — shown when you hit it, not early (reading it early
   is cargo-cult)
 
-![an example search tree](docs/search-tree.png)
+![an example search tree](docs/search-tree.svg)
 
 **Nothing to maintain.** The tree is rebuilt from traces every run; the one irreplaceable thing —
 "why we abandoned X" — is saved to git before a session compacts. See it any time with

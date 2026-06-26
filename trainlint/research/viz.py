@@ -25,6 +25,24 @@ def _esc(s):
     return str(s).replace('"', "'").replace("\n", " ")
 
 
+def _wrap(s, width=24, max_lines=3):
+    """Word-wrap a label for graphviz (joined by literal \\n) — no mid-word
+    truncation. Caps at max_lines, ellipsizing only a genuinely long label."""
+    words, lines, cur = str(s).split(), [], ""
+    for w in words:
+        if cur and len(cur) + 1 + len(w) > width:
+            lines.append(cur)
+            cur = w
+        else:
+            cur = f"{cur} {w}".strip()
+    if cur:
+        lines.append(cur)
+    if len(lines) > max_lines:
+        lines = lines[:max_lines]
+        lines[-1] = lines[-1].rstrip(" .,;:") + "…"
+    return "\\n".join(_esc(x) for x in lines)
+
+
 def ascii_tree(nodes, facts):
     trunk_req = facts.get("trunk_checks", [])
     by_parent = {}
@@ -81,12 +99,12 @@ def dot(nodes, knowledge):
         for w in n.get("walls", []):
             wn = f"wall{wi}"
             wi += 1
-            L.append(f'  "{wn}" [label="WALL\\n{_esc(w[:34])}", shape=note, fillcolor="#ffe066"];')
+            L.append(f'  "{wn}" [label="WALL\\n{_wrap(w)}", shape=note, fillcolor="#ffe066"];')
             L.append(f'  "{n["direction"]}" -> "{wn}" [style=dotted, arrowhead=none];')
             for k in knowledge:
                 if any(str(m).lower() in w.lower() for m in k.get("match", [])):
                     kn = "kn_" + k["id"]
-                    L.append(f'  "{kn}" [label="READ?\\n{_esc(k["title"][:30])}", shape=ellipse, fillcolor="#b2f2bb"];')
+                    L.append(f'  "{kn}" [label="READ?\\n{_wrap(k["title"])}", shape=ellipse, fillcolor="#b2f2bb"];')
                     L.append(f'  "{wn}" -> "{kn}" [style=dashed, label="ready"];')
     L.append("}")
     return "\n".join(L)

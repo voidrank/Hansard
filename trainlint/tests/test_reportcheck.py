@@ -118,9 +118,28 @@ out = router.decide(_stop_event(bare, name="bare"))
 check(_decision(out) == "block" and "codenames" in _reason(out),
       "ids leading their lines -> bounce on voice rule 2 (codenames, not meanings)")
 
-# 7. Non-Stop events are untouched by the report gate (no regression to the action paths).
+# 7. Undefined-jargon density: stance + map present and ids glossed, but the body leans on raw
+#    identifiers the plan-id check can't see (cu_seqlens, modded_dac_vq, rows.py, TP=4) -> bounce.
+jargon = (
+    "9/17 decided · 3 pillars · main thread → the codec contract.\n\n"
+    "phase data ○ ● ✓ main thread →\n\n"
+    "The effective batch (`eff-batch`) and learning rate (`lr-regime`) are re-grounded for the new run. "
+    "We produce interleaved packs ordered user_t then assistant_t, with an assistant-only loss_mask "
+    "riding on the existing vq_mask and cu_seqlens machinery in rows.py and collator.py, feeding the "
+    "modded_dac_vq codec at TP=4 and EP=8.\n\n"
+    "What's locked: the codec is the clock everything times against, so it goes first; the streams are "
+    "interleaved per frame so the model hears the user while it speaks; and the loss only counts the "
+    "assistant frames so it learns to stay quiet. The cheapest next move is to trace the offline packer "
+    "and confirm the mask lines up — want me to start there? This paragraph pads the body comfortably "
+    "past the minimum report-length floor so the gate evaluates the jargon density in the lines above."
+)
+out = router.decide(_stop_event(jargon, name="jargon"))
+check(_decision(out) == "block" and "jargon" in _reason(out),
+      "raw identifiers (cu_seqlens, modded_dac_vq, rows.py, TP=4) -> bounce on voice rule 1")
+
+# 8. Non-Stop events are untouched by the report gate (no regression to the action paths).
 out = router.decide({"hook_event_name": "Stop", "transcript_path": str(_tmp / "missing.jsonl")})
 check(out is None, "missing transcript -> fail-open silent (never raises)")
 
-print(f"\n{9 - fails}/9 passed")
+print(f"\n{10 - fails}/10 passed")
 sys.exit(1 if fails else 0)

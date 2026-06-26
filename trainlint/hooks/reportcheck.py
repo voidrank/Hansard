@@ -35,6 +35,18 @@ except Exception:  # pragma: no cover
 _MIN_REPORT_CHARS = 600
 # Report-shaped = walks the plan: cites at least this many distinct decision ids.
 _MIN_CITED_IDS = 2
+# Patois floor: this many distinct STRONG jargon tokens (snake_case / file.ext / config=N)
+# means the report is leaning on raw identifiers instead of plain language. Calibrated on the
+# megafish report (8 strong) vs a compliant rewrite (0) — 4 separates them with margin.
+_MAX_JARGON = 4
+# STRONG markers: a reader who didn't build this can't decode these from the prose.
+# (Bare ALLCAPS acronyms — AR, LR, PPL — are deliberately EXCLUDED: they appear in good prose
+# too, so counting them would nag. We police the identifiers only a builder would recognise.)
+_JARGON_PATTERNS = [
+    r"\b[a-z][a-z0-9]*_[a-z0-9_]+\b",                  # snake_case: cu_seqlens, vq_mask, loss_mask
+    r"\b[A-Za-z_][\w]*\.(?:py|jsonl?|ya?ml|sh|txt)\b",  # file.ext: rows.py, collator.py
+    r"\b[A-Za-z]{1,5}=\d+\b",                          # inline config: TP=4, EP=8
+]
 
 
 def _last_assistant_text(transcript_path):
@@ -80,6 +92,15 @@ def _leads_a_line(token, text):
     return bool(pat.search(text))
 
 
+def _jargon(text):
+    """Distinct STRONG jargon tokens — raw identifiers a non-builder can't decode."""
+    found = set()
+    for p in _JARGON_PATTERNS:
+        for m in re.finditer(p, text):
+            found.add(m.group(0))
+    return found
+
+
 def _cited(ids, text):
     out = []
     for i in ids:
@@ -120,6 +141,14 @@ def check(data):
         if len(bare) >= 2:
             misses.append("these read as codenames, not meanings — lead each with what it IS and "
                           "keep the id a trailing tag: " + ", ".join("`%s`" % b for b in bare))
+        # D. undefined jargon (voice rule 1: write from the reader's chair). Raw identifiers the
+        # plan-id check can't see (cu_seqlens, modded_dac_vq, rows.py, TP=4) — gloss on first use or cut.
+        jargon = sorted(_jargon(text))
+        if len(jargon) >= _MAX_JARGON:
+            shown = ", ".join("`%s`" % j for j in jargon[:6])
+            more = "" if len(jargon) <= 6 else f" (+{len(jargon) - 6} more)"
+            misses.append("undefined jargon a teammate can't decode — define each on first use in one "
+                          "plain phrase, or cut it: " + shown + more)
 
         if not misses:
             return []

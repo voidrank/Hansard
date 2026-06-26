@@ -3,8 +3,8 @@
 ### It trained fine. That's the bug.
 
 Your AI agent now writes your training code — fast, and just as confident when it's wrong. The worst
-training bugs don't crash. The loss still drops, the run looks fine, and a week later you find that
-one preprocessing default was wrong the whole time.
+training bugs don't crash. The loss still drops, the run looks fine, and a week later you find the
+one line that was wrong the whole time.
 
 **Trainlint is the senior researcher looking over your agent's shoulder** — always on, never tired.
 It has the three habits an experienced collaborator would:
@@ -22,8 +22,8 @@ The judgment stays yours. It just keeps the work honest.
 ## 1. It catches the silent mistake the moment it's typed
 
 Every move the agent makes — change a config, launch a run, touch the model — it sees. And like a
-good senior colleague, it reacts in proportion: most of the time nothing, now and then one of three
-words.
+good senior colleague, it reacts in proportion — one of four moves, and the last one covers 99% of
+the time:
 
 | | when | who it bothers |
 |---|---|---|
@@ -42,8 +42,8 @@ loss = F.cross_entropy(logits.view(-1, vocab), labels.view(-1))
 ```
 
 It runs. The loss even drops. But the next-token shift is gone — the model is being asked to predict
-each token from *itself*. Whether that's a bug only you can say (an autoregressive model needs the
-shift; a diffusion model must *not* have it), so Trainlint hands you the diff:
+each token from *itself*. Only you can say whether that's a bug — an autoregressive model needs the
+shift; a diffusion model must *not* have it — so Trainlint hands you the diff:
 
 > *The loss lost its off-by-one shift (`logits[:, :-1]` vs `labels[:, 1:]`). Without it an
 > autoregressive model just learns to copy its input — the loss keeps dropping while the output
@@ -73,12 +73,12 @@ Each is a **principle, not a fact about your project** — it survives a move to
 codebase. Your specifics (which encoder, which path, which number) live in one swappable facts file.
 That's ~30 rules today, every one an instance of these five.
 
-**And it makes the agent show its work.** The moment the agent wires a dataset into a model or
-touches the loss, Trainlint makes it trace one batch all the way through — loader → every layer →
-loss — writing down not just each shape but what every axis *means* and the lineup a silent bug
-would break: an in-place vs shifted loss, a weight broadcast onto the wrong axis, a mask that's the
-right shape but the wrong meaning. The shapes matching is the easy half; these are the bugs where
-they match and it's *still* wrong.
+**And it makes the agent show its work.** Whenever the agent wires data into a model or touches the
+loss, Trainlint makes it trace one batch end to end — from the loader, through each layer, to the
+final number — and check it lines up at every step. The trap: two tensors can have the *same shape*
+and still mean different things — a label matched up one step off, a weight applied down the wrong
+dimension. Nothing errors; the model just trains on the wrong thing. Doing the trace on paper,
+before the run, is the cheap way to catch it.
 
 Two things make it safe to leave on:
 
@@ -86,7 +86,7 @@ Two things make it safe to leave on:
   approach. A plateau is often right before a breakthrough — it won't prune your search. Information,
   not control; the judgment stays yours.
 - **It can never lock you out.** It blocks in only two cases — a mistake it's certain about, or
-  high-stakes work on a decision you haven't been quizzed on (habit 2) — always with a polite
+  high-stakes work on a decision you haven't been quizzed on (more in §2) — always with a polite
   "denied," never by crashing. A bug in the guard is safer than the bug it guards against: it fails
   open by design.
 

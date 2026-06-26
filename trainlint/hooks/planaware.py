@@ -160,10 +160,26 @@ def assess(data):
         gate = ("" if mastered
                 else f" (you haven't walked this decision in quiz yet — `/trainlint:quiz {did}`)")
         if status == "open":
-            items.append({"level": "escalate", "plan_decision": did,
-                          "message": (f"⟦plan:{did}⟧ this acts on an UNDECIDED decision — "
-                                      f"«{decision}» (principle: {princ}).{why} "
-                                      f"Decide/confirm it before proceeding.{gate}")})
+            # PILLAR HARD-GATE: acting on an OPEN pillar/load_bearing decision BOUNCES the action
+            # (reject -> permissionDecision deny on tool events). The deny reason commands the agent
+            # to ask the user via AskUserQuestion and record the answer before retrying — making the
+            # popup effectively mandatory for the project's CORE dimensions. Deduped once per
+            # (session, decision) by the _seen_then_mark above, so it blocks the first touch to force
+            # the ask, then releases (no lockout; the high-stakes quiz-gate above is the non-deduped
+            # one). On a non-tool (prompt) event the router downgrades reject -> escalate banner.
+            if d.get("pillar") or d.get("load_bearing"):
+                items.append({"level": "reject", "certain": True, "plan_decision": did,
+                              "message": (f"🔒 BLOCKED — this action touches the OPEN pillar decision "
+                                          f"«{decision}» (principle: {princ}).{why} You MUST resolve it "
+                                          f"WITH THE USER first: call AskUserQuestion to ask this decision "
+                                          f"(offer concrete options), then record the answer into "
+                                          f"research/plan.<project>.jsonl (flip status to 'decided'). "
+                                          f"Only then retry this action.")})
+            else:
+                items.append({"level": "escalate", "plan_decision": did,
+                              "message": (f"⟦plan:{did}⟧ this acts on an UNDECIDED decision — "
+                                          f"«{decision}» (principle: {princ}).{why} "
+                                          f"Decide/confirm it before proceeding.{gate}")})
         elif status == "decided":
             items.append({"level": "coach", "plan_decision": did,
                           "message": (f"⟦plan:{did}⟧ decided but UNVERIFIED — «{decision}» → "

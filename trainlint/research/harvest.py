@@ -28,6 +28,50 @@ PATTERNS = [
     ("hypothesis", r"假设|试试|应该是|怀疑.*是|可能是因为"),
 ]
 
+# ── LLM-PASS CONTRACT — assigning `direction` ─────────────────────────────────────────
+# This crude keyword pass tags every hit with direction="?"; it CANNOT name the direction.
+# The production pass is an LLM reading the same transcript, whose ONE extra job is to assign
+# `direction`. The HARD RULE for that pass (and for anyone wiring a model in here):
+#
+#   `direction` MUST be one of the project's PLAN decision ids (research/plan.<name>.jsonl).
+#   Do NOT coin a synonym. "init from the S2 ckpt" -> ckpt-init (the existing decision), NOT a
+#   new "init-from-s2"; "extra loss weight on the turn boundary" -> endpoint-token, NOT
+#   "turn-boundary-loss-weight". A direction that doesn't map to a plan id makes the search
+#   tree and the decision spine speak two vocabularies for the same thing — the exact defect
+#   this rule exists to prevent. If a real new direction has NO matching decision, that is a
+#   signal to add a plan decision, not to invent a tree-only name.
+#
+# normalize_direction() is the deterministic backstop: snaps an LLM's near-miss onto the
+# canonical plan id (exact -> alias -> substring), and returns None for a genuine unknown so
+# the caller can surface "needs a plan decision" instead of letting a synonym through.
+
+
+def plan_ids(name):
+    """The project's plan decision ids — the ONLY legal values for `direction`."""
+    try:
+        import plan as _plan
+        return [n.get("id") for n in _plan.load(name) if n.get("id")]
+    except Exception:
+        return []
+
+
+def normalize_direction(direction, ids, aliases=None):
+    """Snap a harvested direction onto a plan decision id. exact -> alias -> substring -> None."""
+    d = (direction or "").strip()
+    if not d or d == "?":
+        return None
+    if d in ids:
+        return d
+    al = (aliases or {}).get(d)
+    if al in ids:
+        return al
+    dl = d.lower().replace("_", "-")
+    for i in ids:
+        il = i.lower()
+        if dl == il or dl in il or il in dl:
+            return i
+    return None
+
 
 def _texts(path):
     try:

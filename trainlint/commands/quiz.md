@@ -24,12 +24,29 @@ time, never blocks your work.
 - If the target set is empty → say "every plan decision is mastered — nothing to drill" and stop
   (offer `/trainlint:quiz all` to review anyway).
 
+## Deliver EVERY question through a pop-up (non-negotiable)
+A quiz the operator scrolls past is a quiz that didn't happen. **NEVER pose a question as plain
+text and end your turn** — that produces no pop-up and stalls the walk until the operator happens
+to notice and reply. Instead, pose **every** question (and every drill follow-up) with the
+**`AskUserQuestion` tool**. That guarantees a visible pop-up AND returns the answer as a tool
+result, so you keep going in the SAME turn — grade it, mark it, move to the next decision, all
+without stopping. Build the options like this:
+- `question`: the governing question, framed about THIS project's decision.
+- 2-4 `options`: ONE that paraphrases the correct answer (`a` / `d.why`, reworded so it isn't the
+  obvious longest/most-polished choice), plus the `naive` wrong answer from `quiz.jsonl` as a real
+  distractor, plus 1-2 other plausible-but-wrong takes. Make them genuinely confusable — a giveaway
+  defeats the point. The "Other" free-text option is added automatically, so the operator can still
+  explain in their own words instead of picking.
+- After the answer returns, grade it (next section) and CONTINUE — do not yield the turn between
+  decisions. The walk only pauses when the operator picks "skip"/"Other: skip" or closes out.
+
 ## Walk each target decision, in plan order
 For each decision `d`:
-1. Show me its `phase` + `decision` (the question at stake). **Withhold** `choice` and `why`. Ask
-   me the governing question — frame it from `d.principle` (look the principle up in
-   `${CLAUDE_PLUGIN_ROOT}/quiz.jsonl` for the canonical `context→q→naive→why→a` shape, but pose it
-   about THIS project's decision). Wait for my answer.
+1. Show me its `phase` + `decision` (the question at stake). **Withhold** `choice` and `why`. Pose
+   the governing question via **`AskUserQuestion`** (see the pop-up rule above) — frame it from
+   `d.principle` (look the principle up in `${CLAUDE_PLUGIN_ROOT}/quiz.jsonl` for the canonical
+   `context→q→naive→why→a` shape, but pose it about THIS project's decision). The answer comes back
+   as a tool result — read it and continue; never end the turn waiting.
 2. When I answer, reveal `d.choice` + `d.why`, and judge whether I grasped the underlying
    **principle** (the transferable law) — not just the surface detail.
    **ANSWER SHARP — this is non-negotiable.** State the one correct answer as a flat fact in
@@ -42,8 +59,9 @@ For each decision `d`:
    the decision's current fingerprint), and move to the next decision.
 4. **If I missed it or couldn't answer →** don't let it go. GENERATE 2-3 fresh questions that drill
    the SAME `principle` with a DIFFERENT concrete scar (reuse other `quiz.jsonl` items sharing that
-   principle, and/or invent new ones in the same shape). Present them as a numbered menu, let me
-   choose, grade against the principle, and keep going on that principle until I clearly have it —
+   principle, and/or invent new ones in the same shape). Pose them through **`AskUserQuestion`** too
+   (the drill is a question like any other — same pop-up rule), grade against the principle, and
+   keep going on that principle until I clearly have it —
    then mark it mastered and continue. Leave it unmastered (don't mark) if I "skip".
 
 ## Close

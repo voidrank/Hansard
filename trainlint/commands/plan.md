@@ -100,10 +100,14 @@ Present this full picture to me FIRST and let me correct it.
    locked_configs_re, preproc_trap_re/preproc_ok_re, frozen_component, the *_example fields; see
    `project.mimo.json`) and `research/facts.<name>.json` (runs_glob, direction_regex,
    candidate_moves, trunk_checks; see `research/facts.mimo.json`). Leave a key empty rather than fake it.
-5. **Quiz me** — once the decisions are written, walk them as `/trainlint:quiz` does: pose each
-   decision's governing principle as a question, grade against the principle, **answer SHARP**
-   (concrete fact first, principle second, zero hedging), drill misses with fresh scars, and
-   `progress.mark` the ones I get. Soft — "skip" exits.
+5. **Quiz me** — once the decisions are written, walk them as `/trainlint:quiz` does. Pose **every**
+   question through the **`AskUserQuestion` tool** (NOT plain text + end-of-turn — that produces no
+   pop-up and the operator misses it): one correct option paraphrasing the answer, the `naive` wrong
+   answer plus 1-2 plausible distractors, "Other" left for a free-text explanation. The answer comes
+   back as a tool result, so grade against the principle, **answer SHARP** (concrete fact first,
+   principle second, zero hedging), `progress.mark` the ones I get, and roll straight into the next
+   decision IN THE SAME TURN — don't yield between questions. Drill misses with fresh scars (also via
+   `AskUserQuestion`). Soft — "skip" exits.
 6. **The closing REPORT — explain it like a person, end in motion.** When the decisions are written,
    give me a report a teammate who *just walked in* could follow — not a status dump in project patois.
    The layout below is layered (short first, expand only the one thing that matters); the **VOICE** is

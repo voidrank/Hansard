@@ -65,6 +65,29 @@ def main():
         print("FAIL  [model   ] backend should union with regex floor")
     classifier.set_backend(None)
 
+    # --- shape-flow verifier unit (plan-independent: the data-pipeline branch can't be
+    #     pipeline-tested without colliding with the live plan's quiz-gate on 'labels'/etc) ---
+    import importlib
+    cs = importlib.import_module("verifiers.check_shapeflow")
+    sf_cases = [
+        ("dataset __getitem__ shaping a batch",
+         'class MyDataset:\n    def __getitem__(self, i):\n        return {"input_ids": ids, "labels": ids}', True),
+        ("collate_fn padding a batch", "def collate_fn(b):\n    return pad_sequence([x for x in b])", True),
+        ("model reshape + logits", "def forward(self, h):\n    h = h.transpose(1, 2)\n    logits = self.head(h)\n    return logits", True),
+        ("lone reshape, no model/data context -> silent", "def f(h):\n    return h.transpose(1, 2)", False),
+        ("yaml config that merely says input_ids", "input_ids: 100\nbatch_size: 8", False),
+        ("lone .view in a plain util", "x = t.view(-1)", False),
+        ("unrelated code", "def add(a, b):\n    return a + b", False),
+    ]
+    for desc, text, want in sf_cases:
+        total += 1
+        got = cs.wiring(text)[0]
+        if got == want:
+            print(f"ok    [shapeflw] verifier {'fires' if want else 'silent'}: {desc}")
+        else:
+            fails += 1
+            print(f"FAIL  [shapeflw] verifier: {desc} — expected {want}, got {got}")
+
     print(f"\n{total - fails}/{total} passed")
     sys.exit(1 if fails else 0)
 

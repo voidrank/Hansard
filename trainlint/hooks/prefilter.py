@@ -6,10 +6,24 @@ answers a cheap, robust structural question: "could this action change anything
 or go outward?" Read-only / docs / self-edits are dropped; everything that
 mutates code/config/data or sends a file is passed up. When unsure → pass up.
 """
+import json
 import re
 from pathlib import Path
 
 PLUGIN_ROOT = Path(__file__).resolve().parent.parent
+
+
+def _plugin_name(root):
+    try:
+        return json.loads(
+            (root / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8")
+        ).get("name")
+    except Exception:
+        return None
+
+
+# this plugin's name, read once — the fingerprint that identifies our OWN source tree
+_SELF_NAME = _plugin_name(PLUGIN_ROOT)
 
 # commands that only READ — safe to drop without ever asking the model
 READONLY_BASH = re.compile(
@@ -32,6 +46,26 @@ def _paths(ti):
     return out
 
 
+def _in_own_source_tree(rp):
+    """True if rp lives inside ANY checkout of THIS plugin — the installed cache, a
+    dev repo, or a git worktree — identified by an ancestor .claude-plugin/plugin.json
+    whose name matches ours. The installed PLUGIN_ROOT check below only covers the cache
+    copy; this also exempts the dev repo. Without it, editing the harness's own rule
+    sources (which NECESSARILY embed the very keyword patterns the checks scan for, as
+    regex literals) makes the running harness flag its own source — so the dev repo
+    becomes uneditable through it."""
+    if not _SELF_NAME:
+        return False
+    for anc in (rp, *rp.parents):
+        marker = anc / ".claude-plugin" / "plugin.json"
+        try:
+            if marker.is_file() and _plugin_name(anc) == _SELF_NAME:
+                return True
+        except Exception:
+            continue
+    return False
+
+
 def is_self_edit(ti):
     """Editing the harness's own repo → drop (also avoids the dir name 'train'
     spuriously matching). Resolves symlinks so both real and linked paths match."""
@@ -41,6 +75,8 @@ def is_self_edit(ti):
         except Exception:
             continue
         if rp == PLUGIN_ROOT or PLUGIN_ROOT in rp.parents:
+            return True
+        if _in_own_source_tree(rp):
             return True
     return False
 

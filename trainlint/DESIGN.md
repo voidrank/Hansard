@@ -108,6 +108,11 @@ Three guardrails keep the small model's mistakes cheap:
 1. **Prefilter is default-open** (`prefilter.py`): only drop things that can be **proven harmless** (pure reads, docs, self-edits);
    when unsure, always pass it through to be checked. **Never filter by topic/keyword at the door**—that is default-closed, and would
    **silently miss** dangerous actions that didn't match a keyword, making all the downstream judgment pointless.
+   > **Self-edit spans every checkout.** `is_self_edit` drops not just the installed cache copy (`PLUGIN_ROOT`) but *any* checkout of
+   > this plugin — dev repo, git worktree — found by walking the target's ancestors for a `.claude-plugin/plugin.json` whose name matches
+   > ours (`_in_own_source_tree`). Without this, editing the harness's own rule sources gets flagged *by the harness itself*: a verifier file
+   > NECESSARILY embeds the very keyword patterns it scans for, so the running harness reads its own source as "model code" and blocks the
+   > edit — the dev repo becomes uneditable through the live plugin. (Found by dogfooding: adding `check_shapeflow.py` bounced off the quiz-gate.)
 2. **The router fails open as a whole** (`router.py`): any internal error → do nothing, output nothing. If the doorman itself has a bug,
    it must never jam up the workflow because of it.
 3. **Interception uses only `permissionDecision: deny`, never a non-zero exit code.** The router always does `exit 0`.
@@ -256,3 +261,31 @@ and the `concept-gap-quiz` trigger. The trigger fires the moment a concept gap s
 a silent coach steer. It carries `sticky: true`, which exempts it from the plan-aware "settled
 decision → downgrade to coach" rule: a concept gap is never a false alarm, even on a closed decision.
 The popup surfaces and asks you to prove understanding; it never blocks.
+
+---
+
+## 13. Shape-flow: make the AGENT derive the data→model→loss flow itself
+
+When you wire a new dataset into a model, or change the model's forward/loss, the silent killers are
+**shape-COMPATIBLE but semantically wrong** wirings: an in-place vs next-token-shifted loss (does `logits[t]`
+line up with `labels[t]` or `t+1`?); a weight/mask that broadcasts onto the WRONG axis instead of the same
+`[B,T]`; an attention mask whose shape works but whose causal/bidirectional semantics are wrong; a multi-stream
+layout on the wrong axis. None of these crash — a pure "do the shapes match numerically" check misses them all.
+
+The `shape-flow` rule fires the moment such wiring happens and nudges the agent — **silently, coach-level** — to
+DERIVE the end-to-end flow itself: walk one batch `dataloader → every layer → loss scalar`, and for each step record
+not just the shape but (a) symbolic shape (`B,T,V,…`), (b) the *meaning* of each axis, (c) the *alignment invariant* a
+silent bug would break. It is the **"agent derives first"** layer — distinct from the escalate-to-human rules
+(`check_model_code.forward/.loss`), which ask a *person* to review correctness. Escalation here is not a separate gate:
+it is a clause in the guidance — escalate ONLY when the derivation does not close.
+
+Two firing surfaces, because the channels see different things (`classifier._haystack` gives a tool event only the
+path, never the diff):
+- **prompt surface** — `shape-flow-on-talk` in `triggers.jsonl` (portable kernel): fires while you're still *describing*
+  the change, the earliest/cheapest moment to derive.
+- **edit surface** — `shape-flow-on-edit` in `checks.jsonl` + `check_shapeflow.wiring`: inspects the diff content, so it
+  fires on the actual forward/loss/dataloader/collate edit and can point at specific code.
+
+The product is a persisted baseline (`research/shapeflow.<active-project>.md`); on the next change the agent diffs its
+fresh derivation against it and flags which steps moved — the same "record it so the gap is tracked" pattern as
+`concept-gap-quiz`'s glossary.

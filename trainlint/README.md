@@ -81,7 +81,9 @@ trainlint/
 │   ├── progress.py        plan-quiz mastery/coverage state
 │   ├── plan.mimo.jsonl  facts.mimo.json  goal.mimo.txt  knowledge.mimo.jsonl  log.mimo.jsonl
 │   ├── plan.workflow.js  internal engine for /trainlint:plan (big-codebase offload; not its own command)
-│   ├── tree.py  governor.py  surfacer.py  viz.py  lint.py  harvest.py  new_project.py
+│   ├── tree.py  governor.py  surfacer.py  lint.py  harvest.py  new_project.py
+│   ├── viz.py               research-tree HTML + cross-project index + principles ledger
+│   ├── principles.jsonl     distilled project-AGNOSTIC laws (the refined layer)
 ├── commands/{init,plan,quiz,viz,lint}.md
 └── tests/{run.py, cases.jsonl, test_planaware.py}   +  research/test_research.py
 ```
@@ -93,7 +95,7 @@ trainlint/
 | `/trainlint:init <name>` | register a NEW project — a THIN scaffolder (empty stubs + set active; no TODO ceremony) |
 | `/trainlint:plan` | establish the project's FULL context (plain language, file:line grounded), decompose into decisions (written as you go), fill the facts, then quiz — closing on the **compass** (goal · main thread · next action), never a menu |
 | `/trainlint:quiz [id\|topic\|concept]` | drill the plan's decisions and the sticky **concepts** you keep forgetting (mastery-tracked); miss it → drilled with fresh scars |
-| `/trainlint:viz [project]` | visualize the research search tree + knowledge-readiness edges (ASCII + a phone-friendly PNG) |
+| `/trainlint:viz [project]` | generate the research tree — a self-contained, demo-ready HTML report (top-down TLDR · dated timeline · phase-ordered decision spine beside the search tree · knowledge-readiness edges), plus a compact ASCII summary to stdout |
 | `/trainlint:lint [project]` | run the research-lint: reconstruct the tree, surface directionality + readiness hints (read-only) |
 
 `/trainlint:plan` runs in the **foreground** by default (the agent owns the journey — it stays engaged

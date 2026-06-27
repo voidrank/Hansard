@@ -68,11 +68,39 @@ not expand there; replace `<user>`):
 
 ---
 
+## Form B — OpenAI Codex CLI
+
+Codex cloned Claude Code's hook protocol (same stdin JSON, same `hookSpecificOutput`
+fields, same `${CLAUDE_PLUGIN_ROOT}` alias), so the entire Python pipeline runs unchanged.
+One script does the Codex-specific plumbing:
+
+```bash
+git clone git@github.com:voidrank/Trainlint.git ~/Trainlint
+~/Trainlint/trainlint/install-codex.sh        # CODEX_HOME=~/.codex by default
+```
+
+It (1) merges trainlint's hooks — with absolute paths baked in — into `~/.codex/hooks.json`
+(non-destructive: your other hooks are kept; idempotent: re-run anytime, no duplicates), and
+(2) renders `commands/*.md` into `~/.codex/prompts/trainlint-*.md`, so you get
+`/trainlint-plan`, `/trainlint-quiz`, `/trainlint-viz`, `/trainlint-lint`, `/trainlint-init`.
+Start a fresh Codex session to load the hooks. Re-run after moving the repo (paths are baked).
+
+**Two Codex deltas, handled for you:**
+- *Tool names.* Codex's `PreToolUse` fires for `Bash` / `apply_patch` (no Edit/Write/Read).
+  `hooks/codex_compat.py` rewrites an `apply_patch` envelope (and the Bash-heredoc form) into
+  Claude-style Edit `tool_input` before the pipeline sees it, so every check/verifier is
+  tool-agnostic.
+- *No `SessionEnd`.* Harvest runs on `PreCompact` only (the moment-before-loss case); `flow.py`
+  is already turn-anchored, not session-anchored, so nothing else is affected.
+
+---
+
 ## Verify
 
 ```bash
 cd ~/Trainlint/trainlint && python3 tests/run.py              # 21/21
 cd ~/Trainlint/trainlint/research && python3 test_research.py # 9/9
+python3 tests/test_codex_compat.py                            # Codex apply_patch shim
 ```
 
 ## Opt-in knobs (default off)

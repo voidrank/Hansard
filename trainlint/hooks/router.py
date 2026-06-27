@@ -20,6 +20,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import codex_compat   # noqa: E402
 import prefilter      # noqa: E402
 import checks         # noqa: E402
 import classifier     # noqa: E402
@@ -47,6 +48,11 @@ def decide(data):
             return None
         return {"decision": "block",
                 "reason": "\n\n".join(i["message"] for i in items)}
+
+    # Codex shim: rewrite an apply_patch envelope into Claude-style Edit tool_input
+    # so the rest of the pipeline (prefilter/checks/readtrack/planaware) is tool-agnostic.
+    # No-op on Claude input or on anything without a patch. Must run before readtrack.
+    codex_compat.normalize(data)
 
     # record reads FIRST (before the prefilter drops them) so we know what the agent has looked at
     readtrack.record(data)

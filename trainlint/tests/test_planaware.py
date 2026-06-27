@@ -7,6 +7,9 @@ session_id in the events -> dedupe is off -> deterministic.
 import sys
 from pathlib import Path
 
+import os
+os.environ.setdefault("HARNESS_PROJECT", "example")  # tests need an explicit project
+
 HOOKS = Path(__file__).resolve().parent.parent / "hooks"
 sys.path.insert(0, str(HOOKS))
 import planaware  # noqa: E402

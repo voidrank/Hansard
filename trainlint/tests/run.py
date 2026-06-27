@@ -9,6 +9,9 @@ import json
 import sys
 from pathlib import Path
 
+import os
+os.environ.setdefault("HARNESS_PROJECT", "example")  # tests need an explicit project
+
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "hooks"))
 import router  # noqa: E402

@@ -130,6 +130,8 @@ def main():
     data = json.load(sys.stdin)
     event = data.get("hook_event_name", "")
     name = tree._active()
+    if not name:            # no project configured -> stay silent; never assume a default
+        sys.exit(0)
     facts = tree.load_facts(name)
     nodes = tree.build_tree(tree.load_events(name, facts), facts)
 

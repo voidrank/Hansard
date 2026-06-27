@@ -43,7 +43,7 @@ def _active(name=None):
             return t
     except Exception:
         pass
-    return "example"
+    return ""
 
 
 def load(name=None):

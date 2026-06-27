@@ -33,7 +33,7 @@ def _active_name():
             return t
     except Exception:
         pass
-    return "example"
+    return ""
 
 
 def load_facts():

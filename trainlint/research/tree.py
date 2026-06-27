@@ -32,7 +32,7 @@ def _active(name=None):
             return t
     except Exception:
         pass
-    return "example"
+    return ""
 
 
 def _load_jsonl(path):

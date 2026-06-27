@@ -297,3 +297,26 @@ plus at least one **behavioral probe** that checks *meaning, not shape* (e.g. pe
 earlier output is bit-identical iff causality holds; render the attention mask / loss positions as a grid). Run it with
 a tiny random model — seconds, no checkpoint, no GPU — and promote only when green; a red or absent smoke means the GPU
 run is measuring a bug, not the model. Derive (shape-flow) → prove (smoke + probe) → promote is the engineering pass.
+
+### Portable data lints (modality-agnostic, zero facts)
+
+Alongside the diagnostic/process rules, SECTION 1 carries the data-quality sins that recur in EVERY modality
+(text, vision, audio, multimodal) — so they live in the portable kernel, not behind project `{{facts}}`:
+
+- **`no-leakage-across-splits`** — the #1 self-deception. Dedup on the FULL identity key BEFORE splitting; split by
+  GROUP (speaker/document/patient/scene) not by row; check NEAR-duplicates across splits (MinHash/SimHash for text,
+  perceptual-hash/embedding for image/audio). Inflated eval from cross-split leakage is the default failure.
+- **`train-infer-preprocessing-parity`** — training-serving skew: resize/normalize/channel-order/resample/tokenizer/
+  padding must be byte-identical train vs infer. Share ONE code path, pin params + library versions, probe one sample
+  through both paths and assert identical tensors.
+- **`eval-set-contamination`** — a benchmark only measures generalization if the model never saw it. Check the eval set
+  isn't (near-)duplicated in the training corpus; prefer post-cutoff / canary'd sets; else label the number "possibly
+  contaminated."
+- **`filler-is-not-neutral`** — any placeholder (pad token / np.zeros / silence / black frame / [MASK]) is a REAL input:
+  it can encode OOD and it can leak into the loss as a learned target. Check what it encodes to, mask it from the loss
+  on the same [B,T] grid, report the filler %. (The portable generalization of the audio-specific `padding-encodes-OOD`
+  edit-surface check.)
+
+These are prompt-surface coach nudges; the audio-specific *edit-surface* enforcement (`padding-encodes-OOD`,
+`preproc-matches-frozen-config`, `codec-encode-params-match`, `train-read-on-fast-storage`) stays in `checks.jsonl`
+with project `{{facts}}` — same principle, project-specific catch.

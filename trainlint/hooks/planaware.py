@@ -27,6 +27,12 @@ RESEARCH = Path(__file__).resolve().parent.parent / "research"
 STATE = RESEARCH / ".state"
 # plan phases where work is expensive + irreversible — the gate only fires here (high-stakes only)
 HIGH_STAKES = {"model", "loss", "train"}
+# A tree can declare itself OUTSIDE the project under management by carrying this marker file at
+# its root. This mirrors prefilter._in_own_source_tree (DESIGN §4), which exempts the harness's OWN
+# checkouts via an ancestor .claude-plugin/plugin.json. The plan gate is about the PROJECT's training
+# code; a sibling tool repo (e.g. trainlint-builder) or a mined-repo checkout that merely CONTAINS the
+# guarded vocabulary (`loss`/`lr`/`freeze`) is NOT project work and must never be blocked by it.
+FOREIGN_MARKER = ".trainlint-foreign"
 sys.path.insert(0, str(RESEARCH))
 try:
     import plan as planlib  # noqa: E402
@@ -60,6 +66,74 @@ def _haystack(data):
     return " ".join(parts)
 
 
+def _explicit_paths(data):
+    """The action's LITERAL target paths (file_path/path/files) — NOT free content or commands.
+    Used only to tell whether an action even touches a file tree. Empty for prompts and for bare
+    commands (which carry no path), so those keep the gate's full protection on real launches."""
+    ti = data.get("tool_input", {}) or {}
+    out = []
+    for k in ("file_path", "path"):
+        if ti.get(k):
+            out.append(str(ti[k]))
+    if isinstance(ti.get("files"), list):
+        out.extend(str(x) for x in ti["files"])
+    return out
+
+
+def _is_exempt_tree(path_str):
+    """True if some ancestor of this path is NOT the ML project under management — either it carries
+    the FOREIGN_MARKER (a declared tool/mined-repo tree) OR a `.claude-plugin/plugin.json` (a Claude
+    Code plugin's OWN source: the harness itself or a sibling plugin). The latter mirrors
+    prefilter._in_own_source_tree (DESIGN §4) but also covers the BASH surface, so committing/operating
+    inside the harness repo doesn't trip the project gate via a vocabulary-heavy commit message.
+    Best-effort, fail-open."""
+    try:
+        rp = Path(path_str).resolve()
+    except Exception:
+        return False
+    for anc in (rp, *rp.parents):
+        try:
+            if (anc / FOREIGN_MARKER).exists() or (anc / ".claude-plugin" / "plugin.json").exists():
+                return True
+        except Exception:
+            continue
+    return False
+
+
+_ABSPATH_RE = re.compile(r"(?<![\w])/[^\s'\";:]+")
+
+
+def _command_abspaths(data):
+    """Absolute paths referenced in a bash command (best-effort regex). Lets a VCS/util command run
+    INSIDE a foreign tree (`cd /path/trainlint-builder && git commit -m '...loss/lr...'`) be seen as
+    foreign even though it has no file_path field — the commit MESSAGE would otherwise trip the gate."""
+    cmd = (data.get("tool_input", {}) or {}).get("command")
+    return _ABSPATH_RE.findall(str(cmd)) if cmd else []
+
+
+def _action_is_foreign(data):
+    """True iff the action targets ONLY exempt (non-project) trees. Covers two surfaces:
+      - file edits: every file_path/path/files target sits under an exempt tree
+        (`.trainlint-foreign` marker or a `.claude-plugin/plugin.json` plugin source);
+      - bash commands: ≥1 referenced path is exempt AND no referenced path that ACTUALLY EXISTS
+        is outside an exempt tree (so a URL like the session link, which isn't a real path, can't
+        disqualify; but a command that also touches a real PROJECT path stays gated).
+    No path at all (a prompt, or a bare `torchrun train.py` launch) -> NOT foreign: keep protecting
+    it. The whole point is to exempt the harness / trainlint-builder / mined-repo tooling, never
+    the project's training code."""
+    paths = _explicit_paths(data) + _command_abspaths(data)
+    exempt = [p for p in paths if _is_exempt_tree(p)]
+    if not exempt:
+        return False
+    for p in paths:
+        try:
+            if not _is_exempt_tree(p) and Path(p).exists():
+                return False  # also touches a real non-exempt (project) path -> stay gated
+        except Exception:
+            continue
+    return True
+
+
 def _seen_then_mark(session, did):
     """True if this (session, decision) was already surfaced. Marks it on first
     sight. No session id (e.g. in tests) -> never deduped. Best-effort, fail-open."""
@@ -80,6 +154,13 @@ def assess(data):
     """Return (items, located). items are severity-tagged + carry plan_decision;
     located is every plan decision this action touches (used for the downgrade)."""
     if planlib is None:
+        return [], []
+    # FOREIGN-TREE EXEMPTION (DESIGN §4 spirit): an edit whose target file lives in a tree marked
+    # outside the project (`.trainlint-foreign`) is not project work — skip ALL plan involvement
+    # (gate, soft status, drift). Without this, a sibling tool repo whose files literally contain the
+    # guarded vocabulary trips the project's gate on every write. Self-named so it can never lock you
+    # out of the tooling that builds the harness.
+    if _action_is_foreign(data):
         return [], []
     try:
         hay = _haystack(data)

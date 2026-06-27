@@ -124,5 +124,61 @@ check(_pd(router.decide(ev_lo)) != "deny",
 if _bak is not None:
     _sp.write_text(_bak)
 
-print(f"\n{15 - fails}/15 passed")
+# 6. FOREIGN-TREE EXEMPTION — a high-stakes-MATCHING edit whose target lives under a tree marked
+#    `.trainlint-foreign` (a sibling tool repo / mined-repo checkout) must NOT block, even though
+#    its content trips a high-stakes decision's keywords. Real project edits (no marker) still gate.
+import tempfile  # noqa: E402
+
+_foreign = Path(tempfile.mkdtemp(prefix="foreign-tree-"))
+(_foreign / planaware.FOREIGN_MARKER).write_text("not the project under management\n")
+try:
+    _sp2 = HOOKS.parent / "research" / ".state" / "mimo.plan-progress.json"
+    _bak2 = _sp2.read_text() if _sp2.exists() else None
+    try:
+        _sp2.unlink()
+    except OSError:
+        pass
+    ev_foreign = {"hook_event_name": "PreToolUse", "tool_name": "Write",
+                  "tool_input": {"file_path": str(_foreign / "prospect.py"),
+                                 "content": "SIGNAL = r'loss|lr|freeze|scheduler'  # mines fix-commits"}}
+    items_f, located_f = planaware.assess(ev_foreign)
+    check(items_f == [] and located_f == [],
+          "foreign-tree edit locates NOTHING (gate + soft + drift all skipped)")
+    check(_pd(router.decide(ev_foreign)) != "deny",
+          "foreign-tree edit with high-stakes keywords is NOT blocked")
+    # control: same content WITHOUT the marker (a real project path) still blocks
+    ev_real = {"hook_event_name": "PreToolUse", "tool_name": "Edit",
+               "tool_input": {"file_path": "/home/shiyil/mimo/train.py", "new_string": "lr = 2e-5  # full-ft"}}
+    check(_pd(router.decide(ev_real)) == "deny",
+          "control: the SAME keywords in a real project path (no marker) still block")
+    # 6b. BASH surface — a git commit run INSIDE the foreign tree, message full of guarded vocabulary
+    #     AND a session URL (which must NOT be mistaken for a disqualifying path), is exempt too.
+    ev_commit = {"hook_event_name": "PreToolUse", "tool_name": "Bash",
+                 "tool_input": {"command": f"cd {_foreign} && git commit -m "
+                                           f"'fix loss lr freeze scheduler dedup split; "
+                                           f"see https://claude.ai/code/session_x'"}}
+    check(_pd(router.decide(ev_commit)) != "deny",
+          "foreign-tree bash commit (vocabulary-heavy message + URL) is NOT blocked")
+    # 6c. the HARNESS's OWN source tree (has .claude-plugin/plugin.json) is exempt on the bash surface
+    #     too — committing the fix itself, with a vocabulary-heavy message, must not trip the gate.
+    ev_self = {"hook_event_name": "PreToolUse", "tool_name": "Bash",
+               "tool_input": {"command": f"cd {HOOKS.parent} && git commit -m 'fix loss lr freeze scheduler'"}}
+    check(_pd(router.decide(ev_self)) != "deny",
+          "bash command inside the harness's own plugin-source tree is NOT blocked")
+    # ...but a command that ALSO touches a real, EXISTING, non-exempt path stays gated (fail-safe)
+    _realfd, _realpath = tempfile.mkstemp(prefix="real-nonexempt-")  # in /tmp: no marker, no plugin.json
+    ev_mixed = {"hook_event_name": "PreToolUse", "tool_name": "Bash",
+                "tool_input": {"command": f"cd {_foreign} && git apply {_realpath}  # loss lr"}}
+    check(planaware._action_is_foreign(ev_mixed) is False,
+          "a bash command touching BOTH an exempt tree and a real non-exempt path stays gated")
+    import os  # noqa: E402
+    os.close(_realfd)
+    os.unlink(_realpath)
+    if _bak2 is not None:
+        _sp2.write_text(_bak2)
+finally:
+    import shutil  # noqa: E402
+    shutil.rmtree(_foreign, ignore_errors=True)
+
+print(f"\n{21 - fails}/21 passed")
 sys.exit(1 if fails else 0)

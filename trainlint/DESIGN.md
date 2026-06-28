@@ -113,6 +113,9 @@ Three guardrails keep the small model's mistakes cheap:
    > ours (`_in_own_source_tree`). Without this, editing the harness's own rule sources gets flagged *by the harness itself*: a verifier file
    > NECESSARILY embeds the very keyword patterns it scans for, so the running harness reads its own source as "model code" and blocks the
    > edit — the dev repo becomes uneditable through the live plugin. (Found by dogfooding: adding `check_shapeflow.py` bounced off the quiz-gate.)
+   > **Foreign trees opt out the same way.** A repo that isn't *this* plugin but is still steeped in training vocabulary (e.g. `trainlint-builder`,
+   > which mines training-failure principles from commit histories) drops a `.trainlint-foreign` file at its root; `planaware._action_is_foreign`
+   > walks the edit's ancestors for that marker and **skips the whole plan gate** for it — the third-party mirror of `_in_own_source_tree`.
 2. **The router fails open as a whole** (`router.py`): any internal error → do nothing, output nothing. If the doorman itself has a bug,
    it must never jam up the workflow because of it.
 3. **Interception uses only `permissionDecision: deny`, never a non-zero exit code.** The router always does `exit 0`.

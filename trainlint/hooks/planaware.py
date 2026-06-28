@@ -76,10 +76,41 @@ def _seen_then_mark(session, did):
     return False
 
 
+def _action_is_foreign(data):
+    """True if this action edits a file inside a tree marked with a `.trainlint-foreign`
+    file — a repo that is NOT a trainlint-managed training project (e.g. trainlint-builder),
+    whose files are necessarily full of the very training vocabulary the gate scans for.
+    Mirrors prefilter._in_own_source_tree (which exempts the harness's OWN checkouts); this
+    exempts marked third-party trees. Path-based (edits only); fail-open."""
+    ti = data.get("tool_input", {}) or {}
+    paths = []
+    for k in ("file_path", "path"):
+        if ti.get(k):
+            paths.append(str(ti[k]))
+    if isinstance(ti.get("files"), list):
+        paths.extend(str(x) for x in ti["files"])
+    for t in paths:
+        try:
+            rp = Path(t).resolve()
+        except Exception:
+            continue
+        for anc in (rp, *rp.parents):
+            try:
+                if (anc / ".trainlint-foreign").is_file():
+                    return True
+            except Exception:
+                continue
+    return False
+
+
 def assess(data):
     """Return (items, located). items are severity-tagged + carry plan_decision;
     located is every plan decision this action touches (used for the downgrade)."""
     if planlib is None:
+        return [], []
+    # FOREIGN EXEMPTION: an edit inside a tree marked .trainlint-foreign is not a managed
+    # training project — skip the whole plan gate for it (mirrors prefilter's own-source drop).
+    if _action_is_foreign(data):
         return [], []
     try:
         hay = _haystack(data)

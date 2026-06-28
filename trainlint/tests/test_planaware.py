@@ -124,8 +124,23 @@ ev_lo = {"hook_event_name": "PreToolUse", "tool_name": "Write",
          "tool_input": {"file_path": "/home/user/proj/eval_metric.py", "content": "aggregate accuracy top-1"}}
 check(_pd(router.decide(ev_lo)) != "deny",
       "non-high-stakes (eval-stage) work does NOT block")
+
+# 6. FOREIGN EXEMPTION — an edit inside a tree marked .trainlint-foreign skips the plan gate
+#    entirely (a repo that is NOT a managed training project, e.g. trainlint-builder). Runs
+#    while the gate is armed (state deleted), so it proves the exemption bypasses a live gate.
+import tempfile  # noqa: E402
+_foreign = Path(tempfile.mkdtemp())
+(_foreign / ".trainlint-foreign").write_text("not a managed project\n")
+ev_foreign = {"hook_event_name": "PreToolUse", "tool_name": "Edit",
+              "tool_input": {"file_path": str(_foreign / "loss.py"), "new_string": "empty_loss_weight = 0.5"}}
+items_f, located_f = planaware.assess(ev_foreign)
+check(items_f == [] and located_f == [],
+      "foreign-marked tree: plan gate skipped (no items, no located)")
+check(_pd(router.decide(ev_foreign)) != "deny",
+      "foreign edit with the SAME high-stakes content is NOT blocked (vs bare path, which IS)")
+
 if _bak is not None:
     _sp.write_text(_bak)
 
-print(f"\n{15 - fails}/15 passed")
+print(f"\n{17 - fails}/17 passed")
 sys.exit(1 if fails else 0)

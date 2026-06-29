@@ -70,8 +70,13 @@ not expand there; replace `<user>`):
 
 ## Form B — OpenAI Codex CLI
 
-Codex cloned Claude Code's hook protocol (same stdin JSON, same `hookSpecificOutput`
-fields, same `${CLAUDE_PLUGIN_ROOT}` alias), so the entire Python pipeline runs unchanged.
+Codex cloned Claude Code's hook protocol — verified against the real `codex-cli` binary
+(v0.142.4): identical event names (`SessionStart` / `UserPromptSubmit` / `PreToolUse` /
+`PreCompact` / `Stop`), identical input fields (`tool_name` / `tool_input`), and an identical
+output schema (`hookSpecificOutput` · `permissionDecision` · `permissionDecisionReason` ·
+`additionalContext` · `systemMessage`). So the entire Python pipeline runs unchanged. The
+installer bakes absolute paths into `hooks.json` (Codex's own plugin system uses
+`.codex-plugin/plugin.json`, not `${CLAUDE_PLUGIN_ROOT}`, so we don't rely on that env alias).
 One script does the Codex-specific plumbing:
 
 ```bash

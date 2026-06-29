@@ -11,8 +11,7 @@ rebuilt every run, never hand-maintained**. Read-only, fail-soft.
 | view | what it is | how to get it |
 |---|---|---|
 | **Plan** — the spine | the ordered DECISIONS that define the run, each tagged with a transferable principle + a status (open → decided → verified) | `python3 plan.py` · `/trainlint:plan` · `/trainlint:quiz` |
-| **Research tree** — the demo | ONE self-contained HTML: top-down TLDR · dated timeline · decision spine beside the search tree · knowledge-readiness edges | `python3 viz.py [proj]` → `viz/<proj>.html`; `viz.py index` → cross-project overview |
-| **Distilled principles** — the refined layer | the project-AGNOSTIC laws those decisions refine into, tagged by how far they've been tempered (recurrence + verification) | `python3 viz.py principles` → `viz/principles.html` (laws live in `principles.jsonl`) |
+| **Research tree** — the demo | ONE self-contained HTML: a 5-beat story (想做什么 · 遇到问题 · BOTTLENECK · 干了什么 · 要做什么) · dated timeline · decision spine beside the search tree · knowledge-readiness edges | `python3 viz.py [proj]` → `viz/<proj>.html` |
 | **Coaching hints** | the two read-only lints (below), one line, just-in-time | `python3 lint.py [proj]` (`--brief` = the SessionStart one-liner) |
 
 ## The two lints (pure hints — they never restrict exploration)
@@ -47,8 +46,6 @@ vocabulary. Append-only → never rots. No log → degrade to **skeleton only** 
 
 ```bash
 python3 viz.py [project]      # the research-tree HTML report (+ a compact ASCII summary)
-python3 viz.py index          # regenerate every project + a linked overview + the principles ledger
-python3 viz.py principles     # just the project-agnostic principles ledger
 python3 lint.py [project]     # the two lints' hints   (--brief = SessionStart one-liner)
 python3 harvest.py <transcript.jsonl> [project]   # PreCompact / SessionEnd / periodic
 python3 test_research.py      # 20/20
@@ -60,7 +57,7 @@ python3 test_research.py      # 20/20
 mechanism (general, fixed)
   tree.py            build the derived tree from the merged event stream
   governor.py surfacer.py lint.py    the two read-only lints + their entrypoint
-  viz.py             the research-tree HTML + cross-project index + principles ledger
+  viz.py             the research-tree HTML report (one project, one self-contained file)
   harvest.py         session transcript → durable log (LLM pass assigns plan-id directions)
   plan.py progress.py    the decision floor-plan + quiz mastery/coverage state
   flow.py            lifecycle hooks: context · compass · hint · viz-nudge · harvest

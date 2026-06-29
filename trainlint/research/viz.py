@@ -7,11 +7,11 @@ Emits ONE self-contained HTML report (zero external deps — no graphviz, no fon
 libs) to research/viz/<project>.html, and prints a compact ASCII summary + that path to
 stdout (so the terminal and the SessionStart hook still get a one-glance answer).
 
-The report weaves the THREE layers the substrate already records, each on its natural axis
+The report weaves the layers the substrate already records, each on its natural axis
 — it INVENTS no data, it only renders what plan.py / tree.py / surfacer already compute:
 
-  1. TLDR        — goal · bar · the one open "main thread" · settled-vs-open scoreboard ·
-                   pillars · don't-drift-back.                              (from plan.*)
+  1. STORY       — the whole project as ONE 5-beat narrative arc: 想做什么 (总分总: headline ·
+                   core pillars · done-bar) · 遇到问题 · BOTTLENECK · 干了什么 · 要做什么.   (from plan.* + log)
   2. TIMELINE    — the dated story: experiment / wall / verdict / backtrack, in order, with
                    a wall linking to the paper it unlocks.            (from the annotation log)
   3. SPINE+TREE  — the phase-ordered DECISION spine (what we know) beside the SEARCH tree
@@ -290,6 +290,23 @@ body{margin:0;background:var(--bg);color:var(--ink);
 .kv .k{flex:0 0 56px;color:#7dd3fc;font-weight:700;font-size:12px;letter-spacing:.04em;padding-top:1px}
 .now{background:#0b1220;border:1px solid #334155;border-radius:10px;padding:10px 13px;margin-top:6px}
 .now .k{color:#fbbf24}
+.story{display:flex;flex-direction:column;gap:9px;margin:16px 0 4px}
+.beat{display:grid;grid-template-columns:108px minmax(0,1fr);gap:13px;align-items:start}
+.beat .bl{font-size:11.5px;font-weight:700;letter-spacing:.03em;padding-top:1px;white-space:nowrap}
+.beat .bt{font-size:14px;color:#e2e8f0;line-height:1.4}
+.beat .bt .sm{display:block;color:#94a3b8;font-size:12px;margin-top:2px}
+.beat.want .bl{color:#7dd3fc}
+.beat.prob .bl{color:#fca5a5}
+.beat.neck .bl{color:#fbbf24}
+.beat.did .bl{color:#86efac}
+.beat.next .bl{color:#c4b5fd}
+.beat.neck{background:#0b1220;border:1px solid #334155;border-radius:10px;padding:9px 13px}
+.beat .blist{margin:7px 0 4px;padding-left:18px;display:flex;flex-direction:column;gap:4px}
+.beat .blist li{font-size:13px;color:#cbd5e1;line-height:1.4}
+.beat .blist li b{color:#bae6fd;font-weight:700}
+.beat .tail{margin-top:7px;font-size:13px;color:#cbd5e1;border-top:1px solid #1e293b;padding-top:7px}
+.beat .tail b{color:#fbbf24;font-weight:700}
+@media(max-width:640px){.beat{grid-template-columns:1fr;gap:2px}.beat.neck{padding:9px 12px}}
 .score{display:flex;align-items:center;gap:12px;margin-top:14px;flex-wrap:wrap}
 .dots span{font-size:17px;letter-spacing:1px}
 .score .lbl{font-size:13px;color:#cbd5e1}
@@ -337,25 +354,6 @@ details.dec>summary::-webkit-details-marker{display:none}
 .treecap b{color:#334155}
 .empty{color:var(--mut);font-size:13px;padding:22px 16px;text-align:center}
 .foot{color:#94a3b8;font-size:11.5px;text-align:center;margin:22px 0 6px}
-.idxgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px;margin-top:18px}
-a.pcard{display:block;text-decoration:none;color:inherit;background:#fff;border:1px solid var(--line);border-radius:14px;padding:15px 17px;transition:.12s}
-a.pcard:hover{border-color:#94a3b8;box-shadow:0 3px 12px rgba(15,23,42,.08);transform:translateY(-1px)}
-a.pcard h3{margin:0 0 5px;font-size:16px}
-a.pcard .pg{font-size:12.5px;color:var(--mut);margin:0;line-height:1.45;min-height:35px}
-a.pcard .pstat{font-size:12px;color:#475569;display:flex;gap:13px;flex-wrap:wrap;margin-top:10px;align-items:center}
-a.pcard .pnow{font-size:12px;color:#b45309;margin-top:8px;border-top:1px solid #f1f5f9;padding-top:8px}
-a.pcard .ow{color:#dc2626;font-weight:600}
-a.banner{display:block;text-decoration:none;background:#0f172a;color:#e2e8f0;border-radius:12px;padding:12px 16px;margin-top:14px;font-size:13.5px}
-a.banner:hover{background:#1e293b}
-.fam{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:#0369a1;font-weight:700;margin:20px 4px 6px}
-.law{display:grid;grid-template-columns:1fr auto;gap:12px;padding:10px 12px;border-bottom:1px solid #f1f5f9;align-items:start}
-.law:last-child{border-bottom:0}
-.law .txt{font-size:13.5px;color:#1e293b}
-.law .mid{font-size:11px;color:#94a3b8;margin-top:4px;font-variant-numeric:tabular-nums}
-.law .mat{text-align:right;white-space:nowrap}
-.law .tag{display:inline-block;border-radius:6px;padding:2px 8px;font-size:11px;font-weight:700}
-.tg-law{background:#dcfce7;color:#166534}.tg-rec{background:#e0f2fe;color:#075985}
-.tg-once{background:#fef9c3;color:#854d0e}.tg-raw{background:#f1f5f9;color:#64748b}
 """
 
 
@@ -365,6 +363,135 @@ def _dots(counts):
     for st, col in order:
         out.append(f'<span style="color:{col}">' + "●" * counts.get(st, 0) + "</span>")
     return "".join(out)
+
+
+def _want_parts(goal, bar, pl):
+    """The WANT beat as 总-分-总: headline sentence · the project's core pillars (the bullets) ·
+    the done-bar. Headline = goal's first sentence with any trailing 'The N pillars…/DONE…' prose
+    trimmed (those live in the bullets + tail). Bullets = plan.pillars() — the structured core
+    dimensions, same source as the pillar chips. done = bar, else the 'DONE …' clause from goal."""
+    g = " ".join((goal or "").split())
+    head = g
+    for marker in (r"\bThe\s+\w+\s+pillars?\b", r"\bPillars?\s*:", r"\bDONE\b"):
+        m = re.search(marker, head, re.I)
+        if m:
+            head = head[:m.start()]
+    head = head.strip().rstrip(".;—- ")
+    headline = re.split(r"(?<=[.])\s+", head)[0] if head else (g or "— no goal set yet —")
+    bullets = [(p.get("id", ""), _trunc(p.get("choice") or p.get("decision", ""), 96))
+               for p in plan.pillars(pl)]
+    done = bar
+    if not done:
+        m = re.search(r"\bDONE\b\s*[:=]?\s*(.+)", g, re.I)
+        if m:
+            done = m.group(1).strip()
+    done = re.sub(r'^bar\s+for\s+["“]?done["”]?\s*:?\s*', "", done, flags=re.I).strip()
+    return headline, bullets, done
+
+
+def story_beats(goal, bar, pl, nodes, rows):
+    """The whole project told as ONE narrative arc — the five beats every project report
+    leads with: 想做什么 · 遇到问题 · bottleneck · 干了什么 · 要做什么. Every beat is FOLDED
+    from plan + log + tree (goal text, tree walls/verdicts, the load-bearing open decision);
+    nothing here is hand-written. Returns a list of (cls, label, headline, sub) — empty parts
+    degrade to an honest 'nothing logged yet' line, never a fabricated story."""
+    mt = plan.main_thread(pl)
+    summ = plan.summary(pl)
+    n_open = summ["counts"].get("open", 0)
+
+    def _verdict(n):
+        return next((s for t, s in n.get("notes", []) if t == "verdict"), "")
+
+    def _abandon(n):
+        return next((s for t, s in n.get("notes", []) if t == "abandon"), "")
+
+    # recency: latest event ts per direction, so "did / problem" read newest-first
+    last_ts = {}
+    for r in rows:
+        d = r["direction"]
+        if r["ts"]:
+            last_ts[d] = max(last_ts.get(d, ""), r["ts"])
+    order = sorted(nodes, key=lambda d: last_ts.get(d, ""), reverse=True)
+
+    # 2 · 遇到问题 — directions with a wall still standing (no verdict, not abandoned)
+    probs = [(d, next((w for w in reversed(nodes[d].get("walls", [])) if w), ""))
+             for d in order
+             if nodes[d].get("walls") and not nodes[d].get("abandoned") and not _verdict(nodes[d])]
+    # 4 · 干了什么 — walls closed by a verdict, or directions backtracked
+    did = []
+    for d in order:
+        n = nodes[d]
+        v = _verdict(n)
+        if v:
+            did.append(("✓", d, v))
+        elif n.get("abandoned"):
+            did.append(("↩", d, _abandon(n) or "backtracked"))
+
+    def _join(items, fmt, cap, more_noun):
+        head = "  ·  ".join(fmt(x) for x in items[:cap])
+        if len(items) > cap:
+            head += f"  (+{len(items) - cap} more {more_noun})"
+        return head
+
+    beats = []
+    # 1 · 想做什么 — 总分总: headline sentence · the core pillars (bulleted) · the done-bar
+    head, bullets, done = _want_parts(goal, bar, pl)
+    beats.append({"cls": "want", "label": "🎯 想做什么", "head": head,
+                  "bullets": bullets, "tail": (f"<b>done</b> = {_e(done)}" if done else "")})
+    # 2 · 遇到问题
+    if probs:
+        beats.append({"cls": "prob", "label": "⛰ 遇到问题",
+                      "head": _join(probs, lambda p: f"[{p[0]}] {p[1]}", 2, "walls"),
+                      "sub": f"{len(probs)} wall(s) still standing"})
+    else:
+        beats.append({"cls": "prob", "label": "⛰ 遇到问题",
+                      "head": "every wall hit so far has been closed"})
+    # 3 · bottleneck (the load-bearing open decision)
+    if mt:
+        beats.append({"cls": "neck", "label": "🔻 BOTTLENECK", "head": mt.get("decision", ""),
+                      "sub": f"main thread · {mt.get('id', '')}"})
+    else:
+        beats.append({"cls": "neck", "label": "🔻 BOTTLENECK",
+                      "head": "no open bottleneck — every decision is settled"})
+    # 4 · 干了什么
+    if did:
+        beats.append({"cls": "did", "label": "🔧 干了什么",
+                      "head": _join(did, lambda x: f"{x[0]} [{x[1]}] {x[2]}", 3, "moves"),
+                      "sub": f"{len(did)} direction(s) resolved or backtracked"})
+    else:
+        beats.append({"cls": "did", "label": "🔧 干了什么",
+                      "head": "no verdicts or backtracks logged yet"})
+    # 5 · 要做什么
+    if mt:
+        beats.append({"cls": "next", "label": "➡️ 要做什么",
+                      "head": mt.get("choice", "") or "drive the main thread to a verdict",
+                      "sub": f"{n_open} decision(s) still open" if n_open else ""})
+    else:
+        beats.append({"cls": "next", "label": "➡️ 要做什么",
+                      "head": "harden, verify the unverified, and ship"})
+    return beats
+
+
+def story_html(goal, bar, pl, nodes, rows):
+    """Render the five-beat narrative arc as the lead of a project report. The WANT beat may
+    carry `bullets` (总分总: headline · bulleted core pillars · done-tail); others are head+sub."""
+    H = ["<div class='story'>"]
+    for b in story_beats(goal, bar, pl, nodes, rows):
+        body = [f"<div class='bt'>{_e(b['head'])}"]
+        if b.get("sub"):
+            body.append(f"<span class='sm'>{_e(b['sub'])}</span>")
+        if b.get("bullets"):
+            body.append("<ul class='blist'>")
+            for bid, btext in b["bullets"]:
+                body.append(f"<li><b>{_e(bid)}</b> — {_e(btext)}</li>")
+            body.append("</ul>")
+        if b.get("tail"):
+            body.append(f"<div class='tail'>{b['tail']}</div>")  # tail is pre-escaped HTML
+        body.append("</div>")
+        H.append(f"<div class='beat {b['cls']}'><div class='bl'>{_e(b['label'])}</div>"
+                 f"{''.join(body)}</div>")
+    H.append("</div>")
+    return "\n".join(H)
 
 
 def render_html(name, goal, bar, pl, nodes, knowledge, kinds, id2phase, phase_order):
@@ -381,16 +508,9 @@ def render_html(name, goal, bar, pl, nodes, knowledge, kinds, id2phase, phase_or
 
     # ---- header / TLDR ----
     H.append("<div class='hdr'>")
-    H.append(f"<h1>{_e(name)}</h1><div class='sub'>research tree · a Trainlint derived view "
-             "(decisions settled · search you ran · knowledge now readable)</div>")
-    if goal:
-        H.append(f"<div class='kv'><div class='k'>GOAL</div><div>{_e(goal)}</div></div>")
-    if bar:
-        H.append(f"<div class='kv'><div class='k'>BAR</div><div>{_e(bar)}</div></div>")
-    if mt:
-        H.append("<div class='now'><div class='kv' style='margin:0'><div class='k'>NOW</div>"
-                 f"<div><b>{_e(mt.get('decision',''))}</b><br><span style='color:#94a3b8;font-size:12.5px'>"
-                 f"main thread · {_e(mt.get('id',''))} — {_e(mt.get('choice',''))}</span></div></div></div>")
+    H.append(f"<h1>{_e(name)}</h1><div class='sub'>research tree · a Trainlint derived view — "
+             "the project as one story: want · problem · bottleneck · did · next</div>")
+    H.append(story_html(goal, bar, pl, nodes, rows))
     H.append("<div class='score'><div class='dots'>" + _dots(counts) + "</div>"
              f"<div class='lbl'>{counts.get('verified',0)} verified · {counts.get('decided',0)} decided · "
              f"{counts.get('open',0)} open  ({summ['total']} decisions)</div></div>")
@@ -530,143 +650,11 @@ def generate(name):
     return htmlpath, d
 
 
-def discover_projects():
-    """Every project with a plan file in research/ — sorted, names only."""
-    return sorted(p.name[len("plan."):-len(".jsonl")] for p in ROOT.glob("plan.*.jsonl"))
-
-
-def _principle_maturity():
-    """Per principle id, DERIVED from every project's plan: instance count, #projects it
-    recurs in, and verified/decided/open tallies. Numbers only — no project names leak out."""
-    from collections import defaultdict
-    mat = defaultdict(lambda: {"n": 0, "proj": set(), "v": 0, "d": 0, "o": 0})
-    key = {"verified": "v", "decided": "d", "open": "o"}
-    for name in discover_projects():
-        for n in plan.load(name):
-            pr = n.get("principle")
-            if not pr:
-                continue
-            m = mat[pr]
-            m["n"] += 1
-            m["proj"].add(name)
-            m[key.get(n.get("status", "open"), "o")] += 1
-    return mat
-
-
-def render_principles():
-    """The refined, project-AGNOSTIC layer: each decision's transferable law (project nouns
-    stripped), grouped by family, tagged by how far it has been tempered — recurrence +
-    verification across projects, shown as counts only."""
-    princs = tree._load_jsonl(ROOT / "principles.jsonl")
-    mat = _principle_maturity()
-    fams, byf = [], {}
-    for p in princs:
-        f = p.get("family", "(other)")
-        if f not in byf:
-            fams.append(f)
-            byf[f] = []
-        byf[f].append(p)
-
-    def temper(pid):
-        m = mat.get(pid, {"n": 0, "proj": set(), "v": 0})
-        np_ = len(m["proj"])
-        if m["v"] >= 1 and np_ >= 2:
-            return "tempered law", "tg-law"
-        if np_ >= 2:
-            return "recurring", "tg-rec"
-        if m["v"] >= 1:
-            return "verified once", "tg-once"
-        return "raw", "tg-raw"
-
-    transferred = sum(1 for p in princs if len(mat.get(p["id"], {"proj": set()})["proj"]) >= 2)
-    tempered = sum(1 for p in princs if temper(p["id"])[1] == "tg-law")
-    H = ['<!doctype html><html lang="en"><head><meta charset="utf-8">',
-         '<meta name="viewport" content="width=device-width,initial-scale=1">',
-         f"<title>distilled principles</title><style>{CSS}</style></head><body><div class='wrap'>",
-         "<div class='hdr'><h1>Distilled principles</h1><div class='sub'>the project-agnostic "
-         "layer — each decision refined into its transferable law, every project noun / path / "
-         "number stripped out. maturity is counts only: how many independent instances a law has "
-         "survived, across how many projects, how many verified.</div></div>",
-         f"<div class='legend'><span><b>{len(princs)}</b> laws</span>"
-         f"<span><b>{transferred}</b> transferred (≥2 instances)</span>"
-         f"<span><b>{tempered}</b> tempered (transferred + verified)</span>"
-         "<span>tags: tempered law · recurring · verified once · raw</span></div>"]
-    for f in fams:
-        H.append(f"<h2 class='fam'>{_e(f)}</h2><div class='card'>")
-        for p in sorted(byf[f], key=lambda p: -mat.get(p["id"], {"n": 0})["n"]):
-            m = mat.get(p["id"], {"n": 0, "proj": set(), "v": 0, "d": 0, "o": 0})
-            np_ = len(m["proj"])
-            tag, cls = temper(p["id"])
-            meta = (f"{p['id']} · seen {m['n']}× · {np_} project{'s' if np_ != 1 else ''} "
-                    f"· {m['v']}✓ / {m['d']}◐ / {m['o']}○")
-            H.append(f"<div class='law'><div><div class='txt'>{_e(p['law'])}</div>"
-                     f"<div class='mid'>{_e(meta)}</div></div>"
-                     f"<div class='mat'><span class='tag {cls}'>{_e(tag)}</span></div></div>")
-        H.append("</div>")
-    H.append("<div class='foot'>Trainlint · laws from research/principles.jsonl, maturity derived "
-             "from every project's plan — the laws themselves carry no project specifics.</div>")
-    H.append("</div></body></html>")
-    return "\n".join(H)
-
-
-def render_index(ds):
-    """One overview page linking every project's tree, each with a scannable summary card."""
-    H = ['<!doctype html><html lang="en"><head><meta charset="utf-8">',
-         '<meta name="viewport" content="width=device-width,initial-scale=1">',
-         f"<title>research trees</title><style>{CSS}</style></head><body><div class='wrap'>",
-         "<div class='hdr'><h1>Research trees</h1><div class='sub'>Trainlint · derived views "
-         f"across {len(ds)} project(s) — decisions settled · search you ran · knowledge now readable</div></div>",
-         "<a class='banner' href='principles.html'>→ distilled principles ledger — the "
-         "project-agnostic laws these decisions refine into</a>",
-         "<div class='idxgrid'>"]
-    for d in ds:
-        c = plan.summary(d["pl"])["counts"]
-        mt = plan.main_thread(d["pl"])
-        ow = sum(1 for n in d["nodes"].values()
-                 if search_status(n, d["kinds"].get(n["direction"], [])) == "open-wall")
-        H.append(f"<a class='pcard' href='{_e(d['name'])}.html'>")
-        H.append(f"<h3>{_e(d['name'])}</h3>")
-        H.append(f"<p class='pg'>{_e(_trunc(d['goal'], 150))}</p>")
-        H.append("<div class='dots' style='margin-top:10px'>" + _dots(c) + "</div>")
-        H.append(f"<div class='pstat'><span>{c.get('verified',0)}✓ / {c.get('decided',0)}◐ / "
-                 f"{c.get('open',0)}○ decisions</span><span>{len(d['nodes'])} directions</span>"
-                 + (f"<span class='ow'>⚠ {ow} open problems</span>" if ow else "") + "</div>")
-        if mt:
-            H.append(f"<div class='pnow'>▶ main thread: {_e(_trunc(mt.get('decision',''), 78))}</div>")
-        H.append("</a>")
-    H.append("</div><div class='foot'>Trainlint · rebuilt from each project's "
-             "plan/log/knowledge — never hand-maintained.</div></div></body></html>")
-    return "\n".join(H)
-
-
 def main():
-    argv = sys.argv[1:]
-    flags = {a for a in argv if a.startswith("-")}
-    args = [a for a in argv if not a.startswith("-")]
-    cmd = args[0] if args else None
-
-    outdir = ROOT / "viz"
-    if cmd in ("principles", "ledger") or flags & {"--principles"}:
-        outdir.mkdir(exist_ok=True)
-        pp = outdir / "principles.html"
-        pp.write_text(render_principles(), encoding="utf-8")
-        print(f"# distilled principles ledger — {len(tree._load_jsonl(ROOT / 'principles.jsonl'))} laws")
-        print(f"PRINCIPLES: {pp}")
-        return
-
-    if cmd in ("index", "all") or flags & {"--index", "--all"}:
-        names = discover_projects()
-        ds = [generate(nm)[1] for nm in names]
-        outdir.mkdir(exist_ok=True)
-        (outdir / "principles.html").write_text(render_principles(), encoding="utf-8")
-        idxp = outdir / "index.html"
-        idxp.write_text(render_index(ds), encoding="utf-8")
-        print(f"# research-tree index — {len(ds)} project(s): {', '.join(d['name'] for d in ds)}")
-        print(f"INDEX: {idxp}")
-        print(f"PRINCIPLES: {outdir / 'principles.html'}")
-        return
-
-    name = tree._active(cmd)
+    """One project, one self-contained HTML report. The argument is the project name;
+    default is the active project."""
+    argv = [a for a in sys.argv[1:] if not a.startswith("-")]
+    name = tree._active(argv[0] if argv else None)
     htmlpath, d = generate(name)
     print(stdout_summary(name, d["goal"], d["bar"], d["pl"], d["nodes"], d["know"], htmlpath))
 

@@ -100,6 +100,37 @@ Start a fresh Codex session to load the hooks. Re-run after moving the repo (pat
 
 ---
 
+## Form C — Kimi CLI (Kimi Code)
+
+Kimi is a Python coding agent (`uv tool install kimi-cli`) with a Claude-shaped hook system —
+but it is **block-only**: its hook runner reads only `action` (allow/block) + `reason`
+(`kimi_cli/hooks/runner.py`), so the soft channels (silent coach, always-on compass, non-blocking
+escalate) have no native home. Install:
+
+```bash
+~/Trainlint/trainlint/install-kimi.sh        # writes to $KIMI_SHARE_DIR or ~/.kimi
+```
+
+It merges trainlint's hooks into the `hooks = [...]` array in `~/.kimi/config.toml` (preserving
+your other hooks; idempotent) and installs the 5 commands as Kimi skills under `~/.kimi/skills/`,
+callable as `/skill:trainlint-plan` etc. Each hook command is prefixed `TRAINLINT_HOST=kimi` so the
+router adapts its output to Kimi's model.
+
+**What ports, and what doesn't (per the `kimi-output-model` decision):**
+- *Reject* — a PreToolUse hook emitting `permissionDecision:deny` blocks the tool and returns the
+  reason to the agent as a `ToolError` (`tools/.../toolset.py:397`). **Verified live** on an
+  authenticated session: the blocked Shell command never ran and the reason reached the model.
+- *Report doorman* — Stop `block`+reason re-runs the turn with the reason (`soul/kimisoul.py:665`),
+  exactly `reportcheck.py`'s rewrite.
+- *Harvest* — runs on `PreCompact` **and** `SessionEnd` (Kimi has both).
+- *Escalate* — converted to a (rare, destructive) block carrying the alert as the reason —
+  "escalate-by-block."
+- *Tool names* — `hooks/kimi_compat.py` maps `Shell`/`WriteFile`/`StrReplaceFile`
+  (fields `command`/`path`/`edit:{old,new}`) to Claude-style Bash/Write/Edit `tool_input`.
+- *Coach + always-on compass* — **dropped.** Kimi never injects hook stdout into context.
+
+---
+
 ## Verify
 
 ```bash

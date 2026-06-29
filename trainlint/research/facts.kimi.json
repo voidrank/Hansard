@@ -1,0 +1,8 @@
+{
+  "_comment": "Per-project research facts for the kimi port. No training runs to scan; the 'search tree' here is the porting decision spine in plan.kimi.jsonl.",
+  "thresholds": { "patience_P": 3, "window_K": 3, "flat_eps": 0.01 },
+  "runs_glob": "",
+  "direction_regex": "",
+  "trunk_checks": ["read-the-host-contract", "fail-open-never-exit-block", "verify-live-on-real-binary"],
+  "candidate_moves": ["reject-channel", "escalate-by-block", "report-doorman", "harvest", "tool-shim", "install", "commands"]
+}

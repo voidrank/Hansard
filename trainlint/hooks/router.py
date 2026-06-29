@@ -16,11 +16,13 @@ nothing. Blocking is done with permissionDecision, NEVER with a non-zero exit â€
 so a bug here can never lock the session (the lesson from the path-move lockout).
 """
 import json
+import os
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import codex_compat   # noqa: E402
+import kimi_compat    # noqa: E402
 import prefilter      # noqa: E402
 import checks         # noqa: E402
 import classifier     # noqa: E402
@@ -49,10 +51,12 @@ def decide(data):
         return {"decision": "block",
                 "reason": "\n\n".join(i["message"] for i in items)}
 
-    # Codex shim: rewrite an apply_patch envelope into Claude-style Edit tool_input
-    # so the rest of the pipeline (prefilter/checks/readtrack/planaware) is tool-agnostic.
-    # No-op on Claude input or on anything without a patch. Must run before readtrack.
-    codex_compat.normalize(data)
+    # Host shims: rewrite a foreign tool call into Claude-style Edit/Write/Bash
+    # tool_input so the rest of the pipeline (prefilter/checks/readtrack/planaware)
+    # is tool-agnostic. Each is keyed on tool names unique to its host, so both are
+    # safe to run everywhere and are no-ops off-host. Must run before readtrack.
+    codex_compat.normalize(data)   # apply_patch -> Edit (Codex)
+    kimi_compat.normalize(data)    # Shell/WriteFile/StrReplaceFile -> Bash/Write/Edit (Kimi)
 
     # record reads FIRST (before the prefilter drops them) so we know what the agent has looked at
     readtrack.record(data)
@@ -128,6 +132,11 @@ def main():
     try:
         data = json.load(sys.stdin)
         out = decide(data)
+        # Kimi is block-only: rewrite the Claude-style output into what its hook
+        # runner honors (escalate->deny, report-block->deny, coach dropped).
+        # Gated on the host so Claude/Codex output is untouched.
+        if os.environ.get("TRAINLINT_HOST", "").lower() == "kimi":
+            out = kimi_compat.adapt_for_kimi(out)
     except Exception:
         sys.exit(0)  # FAIL OPEN â€” never block because of a harness bug
     if out:

@@ -146,6 +146,12 @@ hook protocol, so the whole pipeline runs unchanged — the only deltas (`apply_
 Edit/Write, no `SessionEnd`) are absorbed by `hooks/codex_compat.py` and `codex/hooks.json`. See
 INSTALL.md → *Form B*.
 
+**Kimi CLI (Kimi Code)** is supported via `./install-kimi.sh`. Kimi's hooks are **block-only**
+(no context injection), so `hooks/kimi_compat.py` maps its tools (`Shell`/`WriteFile`/
+`StrReplaceFile`) to Claude shapes and adapts the router's output to Kimi's model: reject +
+report-doorman + harvest port cleanly, escalate becomes a block ("escalate-by-block"), and the
+soft coach/compass layer is dropped. See INSTALL.md → *Form C*.
+
 ## Test
 
 ```bash

@@ -98,8 +98,12 @@ separate stages of the work, just separate buttons.)
 
 | command | what it does |
 |---|---|
-| `/trainlint:plan [review\|status\|from-log\|<id\|topic\|free-text>]` | the **decide** half — registers the project if new (thin scaffold), establishes its FULL context (plain language, file:line grounded), decomposes into decisions (written as you go), fills the facts, then **quizzes you** on each (pass an id/topic/concept to drill just one) — closing on the **compass** (goal · main thread · next action), never a menu |
+| `/trainlint:plan [review\|status\|from-log\|<id\|topic\|free-text>]` | the **decide** half — registers the project if new (thin scaffold), establishes its FULL context (plain language, file:line grounded), decomposes into decisions (written as you go), fills the facts, then **quizzes you** on each (pass an id/topic/concept to drill just one) — closing on the **compass** (goal · main thread · next action) **and the HTML report path**, never a menu |
 | `/trainlint:execute-and-report [project\|decision-id]` | the **do** half — picks the one decision everything waits on (the `load_bearing` main thread), proposes & **drives** the cheapest move to settle it (doorman live the whole time), records the outcome back into the plan, then **reports**: the search-tree shape (the old `lint`) + the self-contained HTML report (the old `viz`) |
+
+Both commands **sign off on the same `HTML: <path>` line** — the self-contained visual report
+(`research/viz.py`). Before any experiment, `viz.py` renders a planning-stage story (motivation ·
+goal · main thread · next) over the decision spine, so even a fresh plan hands you a picture to open.
 
 `/trainlint:plan` runs in the **foreground** by default (the agent owns the journey — it stays engaged
 and you can interject); a background workflow is available only for a very large codebase.

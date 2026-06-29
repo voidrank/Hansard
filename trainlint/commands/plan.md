@@ -158,9 +158,14 @@ Present this full picture to me FIRST and let me correct it.
    - **Everything else** — one line: "<M> still open across <phase>→<phase> — ask about any, or
      re-run `/trainlint:plan <id>` to drill one." A pointer, not a dump.
 
-   **Don't push empty tools:** if no experiments have run yet, the search-tree is empty and the
-   `/trainlint:execute-and-report` HTML shows only the planning-stage plan story (no timeline/tree)
-   — fine to render once, but don't END on it; the main thread is the destination, not a tool.
+   **End by returning the HTML report path.** After the prose report, render the visual report and
+   hand me its path as the final line — `/trainlint:plan` and `/trainlint:execute-and-report` BOTH
+   close the same way, on `HTML: <path>`. Run `python3 "${CLAUDE_PLUGIN_ROOT}/research/viz.py"
+   <project>` and surface the `HTML: <path>` line it prints. Before any experiment this is fine, not
+   an empty tool: `viz.py` detects the planning stage and renders the plan story (motivation · goal ·
+   main thread · next) over a full-width decision spine, suppressing the empty timeline/tree. The
+   prose report is still the substance and the main thread is still the destination — the HTML link
+   is just how every plan/execute turn signs off, so I always have the one-glance picture to open.
 
    **This is enforced, not just asked.** A finished report is prose, not a tool action, so it used to
    reach no hook — the voice rules were persuasion the model drops at large context. The `Stop` hook

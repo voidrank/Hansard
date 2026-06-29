@@ -170,8 +170,9 @@ Present this full picture to me FIRST and let me correct it.
    **This is enforced, not just asked.** A finished report is prose, not a tool action, so it used to
    reach no hook — the voice rules were persuasion the model drops at large context. The `Stop` hook
    (`hooks/reportcheck.py`) now reads the emitted report: if it walks the plan but skips the stance
-   line or the map, leads with bare decision-ids, or leans on undefined jargon (`cu_seqlens`, `TP=4`),
-   it bounces ONCE for a rewrite. So the layout above is a contract the doorman checks, not a suggestion.
+   line or the map, leads with bare decision-ids, leans on undefined jargon (`cu_seqlens`, `TP=4`),
+   or **omits the `HTML: <path>` sign-off** (the report wasn't rendered), it bounces ONCE for a
+   rewrite. So the layout above — including running `viz.py` — is a contract the doorman checks, not a suggestion.
 
 If the plan ends up only partly written (we ran out of room, got pulled away), that's fine — the
 SessionStart briefing flags a registered-but-unwritten plan, the understanding-gate flags the

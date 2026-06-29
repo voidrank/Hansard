@@ -6,7 +6,8 @@ REPORT as free prose. It is not a tool call (no PreToolUse) and not a user promp
 (no UserPromptSubmit), so no hook ever saw it — the explain-like-a-person voice
 rules (commands/plan.md step 6) were pure persuasion the model drops at large
 context. This binds to the Stop event and turns that persuasion into enforcement:
-when the final message is a plan REPORT that skips the spec's structural anchors,
+when the final message is a plan REPORT that skips the spec's structural anchors
+(stance line / phase map / plain-language voice / the `HTML: <path>` sign-off),
 it bounces ONCE (decision:block) for a rewrite.
 
 DETERMINISTIC + CONSERVATIVE. It fires only on a report-shaped message (cites >=2
@@ -149,6 +150,15 @@ def check(data):
             more = "" if len(jargon) <= 6 else f" (+{len(jargon) - 6} more)"
             misses.append("undefined jargon a teammate can't decode — define each on first use in one "
                           "plain phrase, or cut it: " + shown + more)
+        # E. the HTML sign-off (commands/plan.md step 6: "End by returning the HTML report path").
+        # `/trainlint:plan` and `/trainlint:execute-and-report` BOTH close on viz's `HTML: <path>`
+        # line — the one-glance picture (decision spine + per-decision chatbot/quiz) to open. That
+        # too was prose-only persuasion the model drops at large context (this very gate exists
+        # because that happens); bind it here so a plan walk that forgets to render the report bounces.
+        if not re.search(r"\bHTML:\s*\S+\.html\b", text, re.I) \
+                and not re.search(r"\bviz\.[\w.-]*\.html\b", text, re.I):
+            misses.append("the HTML sign-off — run `python3 research/viz.py <project>` and end on its "
+                          "`HTML: <path>` line so I always have the one-glance report to open")
 
         if not misses:
             return []

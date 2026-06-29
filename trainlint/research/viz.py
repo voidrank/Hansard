@@ -63,6 +63,12 @@ KIND = {  # (glyph, color, label)
     "hypothesis": ("◆", "#7c3aed", "hypothesis"),
     "deadend":    ("✗", "#64748b", "dead end"),
     "trunk-check":("✓", "#0d9488", "trunk-check"),
+    # milestone kinds the execute loop writes ("what we did" -> timeline)
+    "build":      ("⬢", "#2563eb", "built"),
+    "verify":     ("✓", "#16a34a", "verified"),
+    "probe":      ("◆", "#0891b2", "probe"),
+    "decide":     ("●", "#0d9488", "decided"),
+    "note":       ("•", "#64748b", "note"),
 }
 
 
@@ -109,13 +115,18 @@ def timeline_rows(events, knowledge):
     """The dated story — annotation events that carry a ts, oldest first."""
     rows = []
     for e in events:
-        ts = e.get("ts")
+        # accept common aliases so a "what we did" entry still lands on the timeline:
+        # ts<-date, note<-finding/text, direction<-decision. A milestone is never dropped
+        # just because the writer used the natural field name.
+        ts = e.get("ts") or e.get("date")
         if not ts:
             continue  # structured run-events have no date; they live in the tree, not the story
         kind = e.get("kind", "experiment")
-        paper = wall_paper(e.get("note", ""), knowledge) if kind == "wall" else None
-        rows.append({"ts": ts, "kind": kind, "direction": e.get("direction", "?"),
-                     "note": e.get("note", ""), "delta": e.get("delta"), "paper": paper})
+        note = e.get("note") or e.get("finding") or e.get("text") or ""
+        paper = wall_paper(note, knowledge) if kind == "wall" else None
+        rows.append({"ts": ts, "kind": kind,
+                     "direction": e.get("direction") or e.get("decision") or "?",
+                     "note": note, "delta": e.get("delta"), "paper": paper})
     rows.sort(key=lambda r: (r["ts"], 0))
     return rows
 

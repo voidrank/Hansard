@@ -61,6 +61,12 @@ When the move produces a result, close the loop — don't leave the plan stale:
   decided-on-paper, and that's exactly what the next run must turn into something.
 - **If this move NARROWED scope**, add `"scope_drop": ["<phrase removed>", ...]` to the decision so
   the goal↔scope checker catches a `goal.txt` DONE line still advertising what you just dropped.
+- **Append ONE dated milestone line to `research/log.<name>.jsonl` for what you just DID** — this is
+  required, not optional: that log IS the report's Timeline ("what we did", oldest→newest). Schema:
+  `{"ts":"YYYY-MM-DD","kind":"build|verify|probe|decide|note","direction":"<decision id>","note":"<one line: what you did + the number that settled it>"}`.
+  Use `build` when a durable artifact landed, `verify` when a run/audit confirmed a claim, `probe`
+  for a measurement, `decide` for a settled choice. Without this line the move never shows on the
+  timeline — a real step that leaves no dated trace reads as "nothing happened".
 - Harvest the run into the search tree so the lint can see it:
   `python3 "${CLAUDE_PLUGIN_ROOT}/research/harvest.py"` (it reads `runs_glob`/`direction_regex` from
   the facts). A move that produced no logged run just doesn't show as a tree node — that's fine.

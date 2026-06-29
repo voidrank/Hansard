@@ -899,6 +899,151 @@ def render_html(name, goal, bar, pl, nodes, knowledge, kinds, id2phase, phase_or
 
 # --- ascii summary (stdout / hook) ----------------------------------------------------
 
+# A self-contained slide layer — no reveal.js, no CDN, fully offline. Each .slide fills the
+# viewport; only .active shows; ~30 lines of inline JS (DECK_JS) handle arrow-key paging. The
+# .beat / .dec / .chip / .card / .phase styles all come from the report CSS above — reused
+# verbatim so a slide looks identical to the same block in the HTML report. @media print stacks
+# every slide one-per-page so the browser's Print → Save-as-PDF gives a real PDF deck.
+SLIDES_CSS = """
+html,body{margin:0;height:100%;background:#0b1220;color:#cbd5e1;overflow:hidden}
+.deck{height:100vh;width:100vw;position:relative}
+.slide{position:absolute;inset:0;display:none;flex-direction:column;
+  padding:34px 48px;box-sizing:border-box;overflow-y:auto;font-size:18px}
+.slide.active{display:flex}
+.slide.cover{justify-content:center;align-items:center;text-align:center}
+.slide h1{font-size:42px;color:#e2e8f0;margin:0 0 6px}
+.slide h2.sec{font-size:24px;color:#e2e8f0;margin:0 0 16px}
+.cover-goal{font-size:27px;color:#e2e8f0;margin:18px 0;max-width:84%;line-height:1.45}
+.cover-done{color:#fbbf24;margin:6px 0 14px}
+.cover .score{justify-content:center}
+.slide .story{margin:0}
+.slide .beat .bt{font-size:25px;line-height:1.45}.slide .beat .bl{font-size:15px}
+.slide .beat .blist li{font-size:18px}.slide .beat .tail{font-size:18px}
+.dec-flat{padding:11px 0;border-bottom:1px solid #1e293b;display:flex;gap:9px}
+.dec-flat:last-child{border-bottom:none}
+.deck-nav{position:fixed;bottom:13px;right:18px;font-size:12px;color:#64748b;z-index:20;
+  font-family:system-ui,sans-serif}
+@media print{html,body{overflow:visible;height:auto}.deck{height:auto}
+  .slide{display:flex!important;position:relative;inset:auto;height:100vh;
+    page-break-after:always}.deck-nav{display:none}}
+"""
+
+# Minimal offline slide navigator: ←/→ (or space / PgUp-PgDn) to page, Home/End to jump, click
+# anywhere to advance, deep-link via #N. No dependency — inlined into every deck.
+DECK_JS = """
+(function(){var s=[].slice.call(document.querySelectorAll('.slide')),i=0,
+c=document.getElementById('deck-cnt');
+function show(n){i=Math.max(0,Math.min(s.length-1,n));
+  s.forEach(function(el,k){el.classList.toggle('active',k===i);});
+  if(c)c.textContent=(i+1)+' / '+s.length;
+  if(('#'+(i+1))!==location.hash)history.replaceState(null,'','#'+(i+1));}
+function go(d){show(i+d);}
+document.addEventListener('keydown',function(e){
+  if(e.key==='ArrowRight'||e.key==='PageDown'||e.key===' ')go(1);
+  else if(e.key==='ArrowLeft'||e.key==='PageUp')go(-1);
+  else if(e.key==='Home')show(0);else if(e.key==='End')show(s.length-1);});
+document.addEventListener('click',function(e){if(!e.target.closest('a'))go(1);});
+var h=parseInt((location.hash||'').slice(1),10);show(isNaN(h)?0:h-1);})();
+"""
+
+
+def render_slides(name, goal, bar, pl, nodes, knowledge, kinds, id2phase, phase_order,
+                  glossary=None, clarify=None, motivation=""):
+    """A slide deck for the SAME project as render_html — one self-contained, OFFLINE
+    .slides.html (no CDN, no reveal.js; the paging engine is the inlined DECK_JS). Reuses every
+    data builder the HTML report uses (story_beats / spine_groups / timeline_rows / tree_svg /
+    glossary) so the deck never drifts from the report. Present in a browser (←/→ to page);
+    Print → Save-as-PDF gives a real PDF deck (one slide per page)."""
+    glossary = glossary or []
+    gmap = _gloss_map(glossary)
+    summ = plan.summary(pl)
+    counts = summ["counts"]
+    mt = plan.main_thread(pl)
+    pillars = plan.pillars(pl)
+    rows = timeline_rows(tree.load_events(name, tree.load_facts(name)), knowledge)
+    planning = bool(pl) and not rows and not nodes
+
+    def _sec(inner, extra=""):
+        return f"<section class='slide{(' ' + extra) if extra else ''}'>{inner}</section>"
+
+    secs = []
+    # 1 - cover: name - goal headline - done-bar - pillar chips - score
+    head, _bul, done = _want_parts(goal, bar, pl)
+    chips = "".join(f"<span class='chip pillar'>◆ {_e(p['id'])}</span>" for p in pillars)
+    cover = (f"<h1>{_e(name)}</h1><div class='cover-goal'>{_e(head)}</div>"
+             + (f"<div class='cover-done'><b>done</b> = {_e(done)}</div>" if done else "")
+             + (f"<div class='chips'>{chips}</div>" if chips else "")
+             + "<div class='score'><div class='dots'>" + _dots(counts) + "</div>"
+             f"<div class='lbl'>{counts.get('verified',0)} verified · {counts.get('decided',0)} "
+             f"decided · {counts.get('open',0)} open  ({summ['total']} decisions)</div></div>")
+    secs.append(_sec(cover, "cover"))
+
+    # 2 - story: one slide per beat (planning arc before any run, mature arc after)
+    beats = (planning_story_beats(motivation, goal, bar, pl) if planning
+             else story_beats(goal, bar, pl, nodes, rows))
+    for b in beats:
+        secs.append(_sec(_render_beats([b])))
+
+    # 3 - pipeline (only once phases form a real processing flow)
+    if not planning:
+        secs.append(_sec("<h2 class='sec'>The system, phase by phase</h2>" + pipeline_html(pl)))
+
+    # 4 - timeline
+    if not planning and rows:
+        tl = ["<h2 class='sec'>Timeline — how the search got here</h2><div class='card tl'>"]
+        for r in rows:
+            g, col, lbl = KIND.get(r["kind"], ("•", "#64748b", r["kind"]))
+            tl.append(f"<div class='row'><div class='date'>{_e(r['ts'])}</div>"
+                      f"<div class='mk' style='color:{col}'>{g}</div>"
+                      f"<div class='body'><span class='dir'>{_e(r['direction'])}</span> "
+                      f"<span class='knd'>{_e(lbl)}</span>"
+                      f"<div class='note'>{_e(r['note'])}</div></div></div>")
+        tl.append("</div>")
+        secs.append(_sec("".join(tl)))
+
+    # 5 - decision spine: one slide per phase, decisions rendered open (not collapsible)
+    for ph, decs in spine_groups(pl):
+        s = [f"<h2 class='sec'>Decisions — {_e(ph)}</h2><div class='card'>"]
+        for n in decs:
+            st = n.get("status", "open")
+            you = ("<span class='you'>← you are here</span>"
+                   if (mt and n.get("id") == mt.get("id")) else "")
+            pl_tag = "<span class='pill-tag'>◆ pillar</span>" if n.get("pillar") else ""
+            s.append("<div class='dec-flat'>"
+                     f"<span class='gl' style='color:{DEC_COLOR.get(st,'#64748b')}'>"
+                     f"{DEC_ICON.get(st,'?')}</span>"
+                     f"<span class='dsum'><span class='dq'>{_gloss(_e(n.get('decision','')), gmap)}"
+                     f"</span>{you}{pl_tag}"
+                     f"<br><span class='dch'>→ {_gloss(_e(n.get('choice','')), gmap)}</span>"
+                     f"<br><span class='dwhy'><span class='pr'>{_e(n.get('principle',''))}</span> "
+                     f"{_e(n.get('why',''))}</span></span></div>")
+        s.append("</div>")
+        secs.append(_sec("".join(s)))
+
+    # 6 - search tree: SVG inlined, renders natively in the deck (no rasterization)
+    if not planning and nodes:
+        secs.append(_sec("<h2 class='sec'>Search tree — the directions explored</h2>"
+                         "<div class='card' style='padding:12px 8px;overflow:auto'>"
+                         + tree_svg(nodes, knowledge, kinds, id2phase, phase_order)
+                         + "</div>", "tree-slide"))
+
+    # 7 - glossary appendix
+    if glossary:
+        secs.append(_sec("<h2 class='sec'>Glossary</h2>" + glossary_html(glossary)))
+
+    return "\n".join([
+        '<!doctype html><html lang="en"><head><meta charset="utf-8">',
+        '<meta name="viewport" content="width=device-width,initial-scale=1">',
+        f"<title>{_e(name)} — slides</title>",
+        f"<style>{CSS}{SLIDES_CSS}</style></head><body>",
+        "<div class='deck'>",
+        "\n".join(secs),
+        "</div>",
+        "<div class='deck-nav'><span id='deck-cnt'></span> · ←/→ page · Print→PDF</div>",
+        f"<script>{DECK_JS}</script>",
+        "</body></html>"])
+
+
 def stdout_summary(name, goal, bar, pl, nodes, knowledge, htmlpath):
     summ = plan.summary(pl)
     c = summ["counts"]
@@ -957,7 +1102,10 @@ def _load_project(name):
 
 
 def generate(name):
-    """Write research/viz/<name>.html and return (path, project-dict)."""
+    """Write BOTH views of one project from a single load — the interactive report
+    research/viz/<name>.html and the offline slide deck <name>.slides.html — and return
+    (htmlpath, slidespath, project-dict). Two outputs, one _load_project() pass, so the deck
+    can never drift from the report."""
     d = _load_project(name)
     outdir = ROOT / "viz"
     outdir.mkdir(exist_ok=True)
@@ -967,7 +1115,13 @@ def generate(name):
                                     glossary=d["glossary"], clarify=d["clarify"],
                                     motivation=d["motivation"]),
                         encoding="utf-8")
-    return htmlpath, d
+    slidespath = outdir / f"{name}.slides.html"
+    slidespath.write_text(render_slides(d["name"], d["goal"], d["bar"], d["pl"], d["nodes"],
+                                        d["know"], d["kinds"], d["id2phase"], d["phase_order"],
+                                        glossary=d["glossary"], clarify=d["clarify"],
+                                        motivation=d["motivation"]),
+                          encoding="utf-8")
+    return htmlpath, slidespath, d
 
 
 def absorb(name, blob_path):
@@ -1006,7 +1160,7 @@ def absorb(name, blob_path):
                     seen.add((dec, q))
                     cadded += 1
 
-    htmlpath, _ = generate(name)
+    htmlpath, _slides, _ = generate(name)
     print(f"absorbed {added} glossary term(s) + {cadded} FAQ entr(y/ies) into "
           f"{gpath.name} + {cpath.name}\nregenerated HTML: {htmlpath}")
 
@@ -1029,8 +1183,9 @@ def main():
     if blob:
         absorb(name, blob)
         return
-    htmlpath, d = generate(name)
+    htmlpath, slidespath, d = generate(name)
     print(stdout_summary(name, d["goal"], d["bar"], d["pl"], d["nodes"], d["know"], htmlpath))
+    print(f"slides: {slidespath}  (open in a browser · ←/→ to page · Print → Save-as-PDF)")
 
 
 if __name__ == "__main__":

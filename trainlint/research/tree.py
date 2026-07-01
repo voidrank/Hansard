@@ -18,21 +18,13 @@ import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
+import sys as _sys  # noqa: E402
+_sys.path.insert(0, str(ROOT))
+import paths  # noqa: E402  — per-project data lives outside the versioned plugin dir
 
 
 def _active(name=None):
-    if name:
-        return name
-    n = os.environ.get("HARNESS_PROJECT", "").strip()
-    if n:
-        return n
-    try:
-        t = (ROOT.parent / ".active-project").read_text(encoding="utf-8").strip()
-        if t:
-            return t
-    except Exception:
-        pass
-    return ""
+    return name or paths.active_project()
 
 
 def _load_jsonl(path):
@@ -53,13 +45,13 @@ def _load_jsonl(path):
 
 def load_facts(name):
     try:
-        return json.loads((ROOT / f"facts.{name}.json").read_text(encoding="utf-8"))
+        return json.loads(paths.resolve(f"facts.{name}.json").read_text(encoding="utf-8"))
     except Exception:
         return {}
 
 
 def load_annotations(name):
-    return _load_jsonl(ROOT / f"log.{name}.jsonl")
+    return _load_jsonl(paths.resolve(f"log.{name}.jsonl"))
 
 
 def derive_structured(facts):

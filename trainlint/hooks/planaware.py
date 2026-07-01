@@ -24,10 +24,11 @@ import sys
 from pathlib import Path
 
 RESEARCH = Path(__file__).resolve().parent.parent / "research"
-STATE = RESEARCH / ".state"
+sys.path.insert(0, str(RESEARCH))
+import paths  # noqa: E402  — per-project data lives outside the versioned plugin dir
+STATE = paths.state_dir()
 # plan phases where work is expensive + irreversible — the gate only fires here (high-stakes only)
 HIGH_STAKES = {"model", "loss", "train"}
-sys.path.insert(0, str(RESEARCH))
 try:
     import plan as planlib  # noqa: E402
 except Exception:  # pragma: no cover

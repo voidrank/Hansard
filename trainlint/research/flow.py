@@ -24,12 +24,13 @@ sys.path.insert(0, str(HERE))
 import tree       # noqa: E402
 import lint       # noqa: E402  (lint.brief)
 import plan       # noqa: E402  (plan.brief — the project's decision floor-plan)
+import paths      # noqa: E402  — per-project data lives outside the versioned plugin dir
 try:
     import goalcheck  # noqa: E402  (goal ↔ decisions scope-drift warning)
 except Exception:  # pragma: no cover
     goalcheck = None
 
-STATE = HERE / ".state"
+STATE = paths.state_dir()
 
 
 def _read(p):
@@ -61,7 +62,7 @@ def _tree_fp(nodes):
 
 
 def context_briefing(name, nodes):
-    goal = _read(HERE / f"goal.{name}.txt")
+    goal = _read(paths.resolve(f"goal.{name}.txt"))
     parts = [f"[trainlint:context] project '{name}' — re-establishing context."]
     if goal:
         parts.append("goal: " + goal)
@@ -81,8 +82,8 @@ def context_briefing(name, nodes):
         # backstop: a registered project (init ran -> facts/project files exist) with an empty plan
         # means the plan was "started but never written". Flag it prominently — deterministic, every
         # session start, so a derailed foreground draft can't be silently dropped.
-        registered = ((HERE.parent / f"project.{name}.json").exists()
-                      or (HERE / f"facts.{name}.json").exists())
+        registered = (paths.resolve(f"project.{name}.json").exists()
+                      or paths.resolve(f"facts.{name}.json").exists())
         if registered:
             parts.append("⚠️ this project is registered but its PLAN is NOT written yet (started but "
                          "never landed?) — run `/trainlint:plan` to draft the decisions. Don't leave "
@@ -98,8 +99,8 @@ def context_briefing(name, nodes):
 
 def _viz_directive():
     return ("[trainlint:execute-and-report] the search tree changed since you last saw it — render it and send "
-            f"me the picture: run `python3 {HERE / 'viz.py'}` and SendUserFile the PNG it prints "
-            "(on mobile it lands as a zoomable image).")
+            f"me the picture: run `python3 {HERE / 'viz.py'}` and SendUserFile the `MOBILE: <path>` "
+            "card it prints (<name>.mobile.png — on mobile it lands as a zoomable image).")
 
 
 def _compass(name):
@@ -107,7 +108,7 @@ def _compass(name):
     decision to drive right now). Agent-facing — injected every turn so the agent stays locked on
     the goal and doesn't drift into busywork; the goal is constant, the main thread updates as
     decisions resolve. Returns '' if there's nothing to anchor to yet."""
-    goal = _read(HERE / f"goal.{name}.txt")
+    goal = _read(paths.resolve(f"goal.{name}.txt"))
     pl = plan.load(name)
     mt = plan.main_thread(pl) if pl else None
     av = plan.avoided(pl) if pl else []

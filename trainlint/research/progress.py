@@ -15,7 +15,10 @@ import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
-STATE = ROOT / ".state"
+import sys as _sys  # noqa: E402
+_sys.path.insert(0, str(ROOT))
+import paths  # noqa: E402  — per-project data lives outside the versioned plugin dir
+STATE = paths.state_dir()
 
 _KEYS = ("id", "decision", "choice", "principle", "status")
 

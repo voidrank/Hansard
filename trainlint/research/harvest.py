@@ -20,6 +20,8 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
+sys.path.insert(0, str(ROOT))
+import paths  # noqa: E402  — per-project data lives outside the versioned plugin dir
 
 PATTERNS = [
     ("abandon", r"放弃|不走这条|换方向|砍掉|drop this|abandon"),
@@ -96,7 +98,7 @@ def _texts(path):
 
 
 def harvest(path, name="example"):
-    logp = ROOT / f"log.{name}.jsonl"
+    logp = paths.wfile(f"log.{name}.jsonl")
     seen = set()
     if logp.exists():
         for line in logp.read_text(encoding="utf-8").splitlines():

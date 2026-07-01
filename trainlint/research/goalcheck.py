@@ -20,6 +20,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
+import paths  # noqa: E402  — per-project data lives outside the versioned plugin dir
 try:
     import plan as planlib  # noqa: E402
 except Exception:  # pragma: no cover
@@ -28,7 +29,7 @@ except Exception:  # pragma: no cover
 
 def _goal_text(name):
     try:
-        return (ROOT / f"goal.{name}.txt").read_text(encoding="utf-8")
+        return paths.resolve(f"goal.{name}.txt").read_text(encoding="utf-8")
     except Exception:
         return ""
 

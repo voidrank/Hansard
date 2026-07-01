@@ -16,13 +16,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import tree        # noqa: E402
 import governor    # noqa: E402
 import surfacer    # noqa: E402
+import paths       # noqa: E402  — per-project data lives outside the versioned plugin dir
 
 
 def _load(name):
     name = tree._active(name)
     facts = tree.load_facts(name)
     nodes = tree.build_tree(tree.load_events(name, facts), facts)
-    know = tree._load_jsonl(Path(__file__).resolve().parent / f"knowledge.{name}.jsonl")
+    know = tree._load_jsonl(paths.resolve(f"knowledge.{name}.jsonl"))
     return name, facts, nodes, know
 
 

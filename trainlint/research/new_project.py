@@ -17,6 +17,8 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
+sys.path.insert(0, str(HERE))
+import paths  # noqa: E402  — per-project data lives outside the versioned plugin dir
 
 # Empty stub — /trainlint:plan fills the danger-pattern keys from the real code.
 ACTION_FACTS = {
@@ -50,25 +52,29 @@ def main():
             print("exists, skip:", p.name)
             return
         p.write_text(s.replace("<name>", name), encoding="utf-8")
-        print("wrote:", p.relative_to(ROOT))
+        try:
+            rel = p.relative_to(ROOT)
+        except ValueError:
+            rel = p
+        print("wrote:", rel)
 
-    w(ROOT / f"project.{name}.json", json.dumps(ACTION_FACTS, ensure_ascii=False, indent=2))
-    w(HERE / f"facts.{name}.json", json.dumps(RESEARCH_FACTS, ensure_ascii=False, indent=2))
-    w(HERE / f"knowledge.{name}.jsonl",
+    w(paths.wfile(f"project.{name}.json"), json.dumps(ACTION_FACTS, ensure_ascii=False, indent=2))
+    w(paths.wfile(f"facts.{name}.json"), json.dumps(RESEARCH_FACTS, ensure_ascii=False, indent=2))
+    w(paths.wfile(f"knowledge.{name}.jsonl"),
       "# papers/refs indexed by the PROBLEM they solve. one JSON object per line.\n"
       "# fields: id | title | problem | concepts[] | prereqs[] | match[] (wall keywords) | read(bool)\n")
-    w(HERE / f"log.{name}.jsonl",
+    w(paths.wfile(f"log.{name}.jsonl"),
       "# durable append-only annotation log (harvested from sessions). starts empty.\n")
-    w(HERE / f"plan.{name}.jsonl",
+    w(paths.wfile(f"plan.{name}.jsonl"),
       "# Project PLAN: the ordered DECISIONS that define this run, each tagged with the\n"
       "# transferable PRINCIPLE that governs it. Draft it with /trainlint:plan. See plan.example.jsonl.\n"
       "# fields: id | phase | decision | choice | principle | why | status(open|decided|verified) | match(regex)\n")
-    w(HERE / f"goal.{name}.txt", "")
+    w(paths.wfile(f"goal.{name}.txt"), "")
     # motivation.<name>.txt — the optional "why this matters" beat the viz report leads with at
     # the PLANNING stage (before any experiment). Empty stub: viz omits the beat until /plan
     # fills it. Must stay empty (viz renders the whole file as prose — a comment would show up).
-    w(HERE / f"motivation.{name}.txt", "")
-    (ROOT / ".active-project").write_text(name + "\n", encoding="utf-8")
+    w(paths.wfile(f"motivation.{name}.txt"), "")
+    paths.wfile(".active-project").write_text(name + "\n", encoding="utf-8")
     print(f"\nregistered '{name}' and set it active. Empty substrate created — nothing to "
           f"hand-fill.\nNext: run `/trainlint:plan` — it establishes the full project context, "
           f"fills the facts files from the real code, drafts the decisions, then quizzes you.")

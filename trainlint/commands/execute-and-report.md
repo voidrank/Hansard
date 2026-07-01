@@ -46,6 +46,18 @@ paraphrasing the result-backed choice, the plausible alternatives, "Other" for f
 write `decided`. This is the only place execute-and-report pauses for me — everything else keeps
 moving. (Run the move first; the pop-up confirms the *conclusion*, it doesn't ask permission to start.)
 
+**But QUIZ LIBERALLY beyond that one gate — 应问尽问.** The load_bearing pop-up is the MINIMUM, not
+the maximum. Whenever a result rests on something a mechanical check can't settle — SUBJECTIVE quality
+(does the output read naturally, are the tags used well), THIN or edge-of-threshold evidence (a small
+sample, a number sitting near its gate), a STRATEGIC/scope call, or a claim EXTRAPOLATED beyond what
+the run actually tested — STOP and put it to me through the **`AskUserQuestion` tool** (the
+result-backed reading first, the plausible alternatives, "Other" for free-text), even if it's not the
+load_bearing decision. Marking a decision `verified` on a borderline number, or on a metric that can't
+see the quality dimension, without asking, is exactly the silent over-claim to avoid. When in doubt,
+ASK — a cheap pop-up beats a wrong `verified`. (The Stop human-judgment router, `hooks/humanjudge.py`,
+bounces you once if you try to EOS on a conclusion that warranted a pop-up — treat that bounce as the
+reminder to ask, not as an error.)
+
 ## 3. Record the outcome back into the plan
 When the move produces a result, close the loop — don't leave the plan stale:
 - Update the target decision in `research/plan.<name>.jsonl`: `open → decided` once the move picks a
@@ -78,9 +90,15 @@ This half is the old `viz`/`lint` surface, unchanged in capability. Run both:
   never prescribe abandoning a branch — that judgment is mine.
 - `python3 "${CLAUDE_PLUGIN_ROOT}/research/viz.py" <project>` — the self-contained HTML report (5-beat
   story · dated timeline · phase-ordered decision spine beside the search tree · knowledge-readiness
-  edges). Show me the compact ASCII summary it prints to stdout, and send me the single HTML file it
-  points at (the `HTML: <path>` line). It opens in any browser; each decision in the spine carries an
-  expandable "💬 Ask about this" chatbot (browser-side Anthropic API, key stored only in the browser).
+  edges). It writes three views and prints three sign-off lines: `HTML: <path>` (the interactive
+  report), `SLIDES: <path>` (the offline deck), and `MOBILE: <path>` (a phone card, `<name>.mobile.png`).
+  Show me the compact ASCII summary it prints, **surface all three lines verbatim**, and **`SendUserFile`
+  the `MOBILE:` file** — an `HTML: /home/.../viz/<name>.html` path is useless on a phone, so the
+  `.mobile.png` card (goal · stance · pillars · main thread) is what actually lands in my hand and
+  previews inline as a zoomable image. The HTML opens in any browser; each decision in the spine
+  carries an expandable "💬 Ask about this" chatbot (browser-side Anthropic API, key stored only in
+  the browser). The `Stop` report-doorman enforces this delivery: a close that omits the `MOBILE:`
+  line or never sends the phone preview bounces ONCE for a rewrite.
 
 Wrap the output in the **explain-like-a-person voice** (same five rules `/trainlint:plan` closes
 with — and the `Stop` report-doorman enforces them here too):

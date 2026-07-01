@@ -30,6 +30,7 @@ import planaware      # noqa: E402
 import readtrack      # noqa: E402
 import reportcheck    # noqa: E402
 import autopilot      # noqa: E402
+import humanjudge     # noqa: E402
 
 _RANK = {"reject": 3, "escalate": 2, "coach": 1}
 
@@ -51,8 +52,14 @@ def decide(data):
             # Report needs a rewrite first — bounce it; do NOT autopilot a malformed report.
             return {"decision": "block",
                     "reason": "\n\n".join(i["message"] for i in items)}
-        # Report is clean. OPT-IN autopilot: if no human/GPU/decision block is needed, keep the
-        # loop running by blocking the stop with a "run /trainlint:execute-and-report" reason.
+        # Report is clean. HUMAN-JUDGMENT router (opt-in): if this step's conclusion needs a human
+        # to judge (subjective / thin evidence / strategic), bounce once to make the agent ASK the
+        # operator — before any autonomous continuation. Routes to human; never judges correctness.
+        ask = humanjudge.check(data)
+        if ask:
+            return {"decision": "block", "reason": ask}
+        # OPT-IN autopilot: if no human/GPU/decision block is needed, keep the loop running by
+        # blocking the stop with a "run /trainlint:execute-and-report" reason.
         # Off by default; capped + Haiku-gated; returns None (let it stop) on anything uncertain.
         cont = autopilot.check(data)
         if cont:

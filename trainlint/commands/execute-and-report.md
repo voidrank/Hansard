@@ -58,6 +58,12 @@ ASK — a cheap pop-up beats a wrong `verified`. (The Stop human-judgment router
 bounces you once if you try to EOS on a conclusion that warranted a pop-up — treat that bounce as the
 reminder to ask, not as an error.)
 
+**EVERY operator decision goes through the `AskUserQuestion` tool — never a plain-text question.** If
+you would end with "要我…吗? / which do you want / ①…②…", that IS an AskUserQuestion: put the options
+(result-backed reading first, plausible alternatives, "Other" for free-text) into the tool, not into
+prose. The report-doorman bounces a plain-text choice that skipped the tool — a pop-up can't be missed
+and gives a clean structured answer.
+
 ## 3. Record the outcome back into the plan
 When the move produces a result, close the loop — don't leave the plan stale:
 - Update the target decision in `research/plan.<name>.jsonl`: `open → decided` once the move picks a

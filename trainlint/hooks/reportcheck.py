@@ -122,6 +122,61 @@ def _sent_mobile(transcript_path, tail_lines=90):
         return False
 
 
+def _used_askuserquestion(transcript_path, tail_lines=60):
+    """True if this turn actually put a choice to the operator via the AskUserQuestion TOOL (a
+    multiple-choice pop-up), not a plain-text question. Mirrors _sent_mobile; tail-bounded."""
+    try:
+        p = Path(transcript_path)
+        if not p.exists():
+            return False
+        for line in p.read_text(encoding="utf-8").splitlines()[-tail_lines:]:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                obj = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            msg = obj.get("message", obj)
+            if not isinstance(msg, dict) or msg.get("role") != "assistant":
+                continue
+            content = msg.get("content")
+            if not isinstance(content, list):
+                continue
+            for b in content:
+                if isinstance(b, dict) and b.get("type") == "tool_use" and b.get("name") == "AskUserQuestion":
+                    return True
+        return False
+    except Exception:
+        return False
+
+
+# A plain-text message that puts a CHOICE to the operator — should have been an AskUserQuestion
+# (multiple-choice pop-up) instead. Conservative: needs an option-solicitation pattern AND a '?'.
+_DECISION_SOLICIT = re.compile(
+    r"要我[^。\n]{0,40}吗\s*[?？]"                 # 要我…吗？
+    r"|二选一|三选一|你(来)?(选|定|拍板|决定)"       # 二选一 / 你选 / 你定 / 你拍板
+    r"|哪(一)?(种|个|条)[^。\n]{0,20}[?？]"          # 哪种/哪个…？
+    r"|[①②③]|\b[Aa]\)\s|\b1\)\s.*\b2\)\s"          # ①②③ / A) / 1) … 2)
+    r"|which (option|one|approach|do you)",
+    re.I)
+
+
+def _plaintext_decision_gap(text, transcript_path):
+    """Fragment if the final message poses a CHOICE to the operator in plain text but the turn did
+    NOT use the AskUserQuestion tool — else None. Enforces: user decisions go as multiple-choice."""
+    if len(text) < 120:
+        return None
+    if not (("?" in text or "？" in text) and _DECISION_SOLICIT.search(text)):
+        return None
+    if _used_askuserquestion(transcript_path):
+        return None
+    return ("a user DECISION as multiple-choice — you put a choice to me in plain text (e.g. "
+            "'要我…吗? / 二选一 / ①②') but didn't use the AskUserQuestion tool. Every choice that "
+            "needs my decision goes through AskUserQuestion (a pop-up with the options + 'Other'), "
+            "not a plain-text question, so I can't miss it and you get a clean answer")
+
+
 def _leads_a_line(token, text):
     """True if `token` opens any line — i.e. it is used as a bare codename/subject
     rather than a trailing tag. Strips markdown bullet/heading/bold/backtick markers
@@ -324,27 +379,31 @@ def check(data):
     try:
         text = _last_assistant_text(data.get("transcript_path", ""))
 
-        # DATA-FORMAT gate — runs on ANY substantial final message (a format explanation need
-        # not cite plan ids). If it fires and the message is NOT a plan report, bounce on it alone.
+        # UNIVERSAL gates — run on ANY substantial final message (need not cite plan ids). If one
+        # fires and the message is NOT a plan report, bounce on it alone.
         df_fragment = _data_format_fragment(text)
+        dec_fragment = _plaintext_decision_gap(text, data.get("transcript_path", ""))
 
-        def _df_only():
-            if not df_fragment:
+        def _universal_only():
+            frs = [f for f in (df_fragment, dec_fragment) if f]
+            if not frs:
                 return []
-            return [{"name": "data-format-examples", "level": "reject", "certain": True,
-                     "message": "📐 DATA-FORMAT gate — " + df_fragment
+            return [{"name": "universal-gate", "level": "reject", "certain": True,
+                     "message": "📐 " + " ".join("— " + f for f in frs)
                                 + ". (This bounces once; the rewrite goes straight through.)"}]
 
         if len(text) < _MIN_REPORT_CHARS:
-            return _df_only()
+            return _universal_only()
         ids = [d.get("id", "") for d in planlib.load()]
         cited = _cited(ids, text)
         if len(cited) < _MIN_CITED_IDS:
-            return _df_only()  # not report-shaped: a normal answer, not a plan walk
+            return _universal_only()  # not report-shaped: a normal answer
 
         misses = []
         if df_fragment:
             misses.append(df_fragment)
+        if dec_fragment:
+            misses.append(dec_fragment)
         gaps = _plan_format_gaps()
         if gaps:
             misses.append("these PLAN decisions describe a data format but show <3 examples: "

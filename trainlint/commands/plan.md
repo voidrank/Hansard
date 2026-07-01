@@ -145,6 +145,10 @@ Present this full picture to me FIRST and let me correct it.
    principle second, zero hedging), `progress.mark` the ones I get, and roll straight into the next
    decision IN THE SAME TURN — don't yield between questions. Drill misses with fresh scars (also via
    `AskUserQuestion`). Soft — "skip" exits.
+   **This holds for ANY operator decision, not just the quiz:** every choice you put to me — which
+   option, whether to proceed, which of two approaches — goes through the `AskUserQuestion` tool
+   (options + "Other"), NEVER a plain-text "要我…吗? / which do you want / ①…②…". The report-doorman
+   bounces a plain-text choice that skipped the tool.
 6. **The closing REPORT — explain it like a person, end in motion.** When the decisions are written,
    give me a report a teammate who *just walked in* could follow — not a status dump in project patois.
    The layout below is layered (short first, expand only the one thing that matters); the **VOICE** is

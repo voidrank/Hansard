@@ -27,6 +27,7 @@ from pathlib import Path
 
 RESEARCH = Path(__file__).resolve().parent.parent / "research"
 sys.path.insert(0, str(RESEARCH))
+import paths  # noqa: E402  — per-project data lives outside the versioned plugin dir
 try:
     import plan as planlib  # noqa: E402
 except Exception:  # pragma: no cover
@@ -283,8 +284,8 @@ def _goal_too_long():
     sentence — the pillars carry the detail as bullets. Return the headline word count if it blows
     past the cap, else 0. Fail-open."""
     try:
-        active = (RESEARCH.parent / ".active-project").read_text(encoding="utf-8").strip()
-        p = RESEARCH / f"goal.{active}.txt"
+        active = paths.active_project()
+        p = paths.resolve(f"goal.{active}.txt")
         if not p.exists():
             return 0
         g = " ".join(p.read_text(encoding="utf-8").split())

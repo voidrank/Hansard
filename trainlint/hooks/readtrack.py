@@ -12,9 +12,12 @@ per-session set. `check(data)` coaches (agent-facing, never blocks) when an Edit
 an EXISTING file not in that set. Fail-open: any error → no tracking, no coaching.
 """
 import re
+import sys
 from pathlib import Path
 
-STATE = Path(__file__).resolve().parent.parent / "research" / ".state"
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "research"))
+import paths  # noqa: E402  — per-project data lives outside the versioned plugin dir
+STATE = paths.state_dir()
 READ_TOOLS = {"Read", "NotebookRead"}
 EDIT_TOOLS = {"Edit", "MultiEdit", "Write"}
 # cat/head/… <file> in a Bash command counts as having read the file

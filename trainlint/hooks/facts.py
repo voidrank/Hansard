@@ -15,25 +15,18 @@ keys, set .active-project to <name>. The rules never change; only facts do.
 import json
 import os
 import re
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "research"))
+import paths  # noqa: E402  — per-project data lives outside the versioned plugin dir
 _PLACEHOLDER = re.compile(r"\{\{(\w+)\}\}")
 _CACHE = None
 
 
 def _active_name():
-    n = os.environ.get("HARNESS_PROJECT")
-    if n:
-        return n.strip()
-    f = ROOT / ".active-project"
-    try:
-        t = f.read_text(encoding="utf-8").strip()
-        if t:
-            return t
-    except Exception:
-        pass
-    return ""
+    return paths.active_project()
 
 
 def load_facts():
@@ -41,7 +34,7 @@ def load_facts():
     if _CACHE is not None:
         return _CACHE
     try:
-        _CACHE = json.loads((ROOT / f"project.{_active_name()}.json").read_text(encoding="utf-8"))
+        _CACHE = json.loads(paths.resolve(f"project.{_active_name()}.json").read_text(encoding="utf-8"))
     except Exception:
         _CACHE = {}
     return _CACHE

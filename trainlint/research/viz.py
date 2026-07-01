@@ -34,6 +34,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import tree   # noqa: E402
 import plan   # noqa: E402
+import paths  # noqa: E402  — per-project data lives outside the versioned plugin dir
 
 ROOT = Path(__file__).resolve().parent
 
@@ -815,7 +816,7 @@ def focus_section_html(name):
     """CURRENT FOCUS — the active trial-and-error work right now (distinct from the main thread,
     which is ONE decision, and pillars, which are settled core dimensions). Reads
     research/focus.<name>.jsonl: {id, title, decision?, status, trying, next?}. Empty file -> ''."""
-    fp = Path(__file__).resolve().parent / f"focus.{name}.jsonl"
+    fp = paths.resolve(f"focus.{name}.jsonl")
     if not fp.exists():
         return ""
     items = []
@@ -979,7 +980,7 @@ def pipeline_html(name):
     list of {label, note} stages, rendered left-to-right with arrows. No file -> nothing. (The old
     version laid out the plan's PHASES with arrows, which was misleading — phases are decision
     categories, not a processing flow.)"""
-    fp = Path(__file__).resolve().parent / f"pipeline.{name}.jsonl"
+    fp = paths.resolve(f"pipeline.{name}.jsonl")
     if not fp.exists():
         return ""
     stages = []
@@ -1432,12 +1433,12 @@ def _load_project(name):
     facts = tree.load_facts(name)
     nodes = tree.build_tree(tree.load_events(name, facts), facts)
     pl = plan.load(name)
-    know = tree._load_jsonl(ROOT / f"knowledge.{name}.jsonl")
-    glossary = tree._load_jsonl(ROOT / f"glossary.{name}.jsonl")
-    clarify = tree._load_jsonl(ROOT / f"clarify.{name}.jsonl")
-    gp = ROOT / f"goal.{name}.txt"
+    know = tree._load_jsonl(paths.resolve(f"knowledge.{name}.jsonl"))
+    glossary = tree._load_jsonl(paths.resolve(f"glossary.{name}.jsonl"))
+    clarify = tree._load_jsonl(paths.resolve(f"clarify.{name}.jsonl"))
+    gp = paths.resolve(f"goal.{name}.txt")
     goal, bar = split_goal(gp.read_text(encoding="utf-8") if gp.exists() else "")
-    mp = ROOT / f"motivation.{name}.txt"
+    mp = paths.resolve(f"motivation.{name}.txt")
     motivation = " ".join(mp.read_text(encoding="utf-8").split()) if mp.exists() else ""
     kinds = {}
     for e in tree.load_events(name, facts):
@@ -1495,7 +1496,7 @@ def absorb(name, blob_path):
     import json as _json
     blob = _json.loads(Path(blob_path).read_text(encoding="utf-8"))
 
-    gpath = ROOT / f"glossary.{name}.jsonl"
+    gpath = paths.wfile(f"glossary.{name}.jsonl")
     have = {e.get("term", "").lower() for e in (tree._load_jsonl(gpath) if gpath.exists() else [])}
     added = 0
     with gpath.open("a", encoding="utf-8") as f:
@@ -1509,7 +1510,7 @@ def absorb(name, blob_path):
                 have.add(term.lower())
                 added += 1
 
-    cpath = ROOT / f"clarify.{name}.jsonl"
+    cpath = paths.wfile(f"clarify.{name}.jsonl")
     seen = {(e.get("dec"), e.get("q")) for e in (tree._load_jsonl(cpath) if cpath.exists() else [])}
     cadded = 0
     with cpath.open("a", encoding="utf-8") as f:

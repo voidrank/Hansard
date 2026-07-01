@@ -28,6 +28,9 @@ import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
+import sys as _sys  # noqa: E402
+_sys.path.insert(0, str(ROOT))
+import paths  # noqa: E402  — per-project data lives outside the versioned plugin dir
 
 STATUSES = ("open", "decided", "verified")
 
@@ -99,24 +102,13 @@ def built(plan=None, name=None, base=None):
 
 
 def _active(name=None):
-    if name:
-        return name
-    n = os.environ.get("HARNESS_PROJECT", "").strip()
-    if n:
-        return n
-    try:
-        t = (ROOT.parent / ".active-project").read_text(encoding="utf-8").strip()
-        if t:
-            return t
-    except Exception:
-        pass
-    return ""
+    return name or paths.active_project()
 
 
 def load(name=None):
     """Ordered list of plan decision nodes. [] if there is no plan file."""
     name = _active(name)
-    p = ROOT / f"plan.{name}.jsonl"
+    p = paths.resolve(f"plan.{name}.jsonl")
     rows = []
     if not p.exists():
         return rows

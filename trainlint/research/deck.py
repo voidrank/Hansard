@@ -22,6 +22,7 @@ ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 import plan          # noqa: E402
 import viz           # noqa: E402  (reuse split_goal / _want_parts — single source w/ the report)
+import paths         # noqa: E402  — per-project data lives outside the versioned plugin dir
 
 try:
     from pptx import Presentation
@@ -164,7 +165,7 @@ class Deck:
 
 
 def build(name):
-    gp = ROOT / f"goal.{name}.txt"
+    gp = paths.resolve(f"goal.{name}.txt")
     goal, bar = viz.split_goal(gp.read_text(encoding="utf-8") if gp.exists() else "")
     pl = plan.load(name)
     pillars = plan.pillars(pl)

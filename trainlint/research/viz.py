@@ -121,6 +121,34 @@ def wall_paper(wall, knowledge):
     return None
 
 
+def newly_done(name):
+    """(set of decision-ids touched on the LATEST log date, that date) — powers the 🆕 NEW badge so
+    a reader can track what changed THIS run. Derived from the dated log; no per-decision field."""
+    try:
+        lp = paths.resolve(f"log.{name}.jsonl")
+        if not lp.exists():
+            return set(), ""
+        ev = []
+        for line in lp.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                e = json.loads(line)
+            except Exception:
+                continue
+            ts = e.get("ts") or e.get("date")
+            d = e.get("direction") or e.get("decision")
+            if ts and d and e.get("kind") in ("build", "verify", "decide", "probe"):
+                ev.append((ts, d))
+        if not ev:
+            return set(), ""
+        latest = max(t for t, _ in ev)
+        return {d for t, d in ev if t == latest}, latest
+    except Exception:
+        return set(), ""
+
+
 def timeline_rows(events, knowledge):
     """The dated story — annotation events that carry a ts, oldest first."""
     rows = []
@@ -405,6 +433,9 @@ details.dec>summary::-webkit-details-marker{display:none}
 .excap{font-size:11px;color:#64748b;margin-bottom:4px}
 .excode{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;color:#0f172a;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:8px 11px;margin:0;white-space:pre;overflow-x:auto;line-height:1.55}
 .dchfull{font-size:12px;color:#475569;padding:6px 0 2px 10px;margin-top:4px;white-space:pre-wrap;border-left:2px solid #e2e8f0}
+.newbar{margin:14px 0 2px;padding:9px 13px;border-radius:9px;background:#f0fdf4;border:1px solid #bbf7d0;font-size:12.5px;color:#166534}
+.newbar code{background:#dcfce7;color:#14532d;border-radius:4px;padding:1px 5px;font-size:11.5px}
+.new-tag{background:#16a34a;color:#fff;font-size:9.5px;font-weight:700;letter-spacing:.03em;padding:1px 6px;border-radius:9px;margin-left:7px;vertical-align:middle}
 .focussec{margin:16px 0 6px;border:1px solid #bfdbfe;border-radius:10px;padding:14px 16px;background:#eff6ff}
 .fshdr{font-size:13px;font-weight:700;letter-spacing:.03em;color:#1e3a8a;margin-bottom:11px}
 .fcard{background:#fff;border:1px solid #dbeafe;border-radius:8px;padding:10px 12px;margin-bottom:9px}
@@ -1083,6 +1114,12 @@ def render_html(name, goal, bar, pl, nodes, knowledge, kinds, id2phase, phase_or
         H.append("<div class='rej'><b>⚠️ goal↔scope drift:</b> " + _e(_gd) + "</div>")
     H.append("</div>")  # hdr
 
+    # ---- 🆕 NEWLY DONE: what changed on the latest run (from the dated log) ----
+    _new_ids, _new_date = newly_done(name)
+    if _new_ids:
+        _names = " · ".join(f"<code>{_e(i)}</code>" for i in sorted(_new_ids))
+        H.append(f"<div class='newbar'><b>🆕 Newly done ({_e(_new_date)}):</b> {_names}</div>")
+
     # ---- CURRENT FOCUS: the active trial-and-error work right now ----
     H.append(focus_section_html(name))
 
@@ -1154,6 +1191,7 @@ def render_html(name, goal, bar, pl, nodes, knowledge, kinds, id2phase, phase_or
             st = n.get("status", "open")
             you = "<span class='you'>← you are here</span>" if (mt and n.get("id") == mt.get("id")) else ""
             pl_tag = "<span class='pill-tag'>◆ pillar</span>" if n.get("pillar") else ""
+            new_tag = "<span class='new-tag'>🆕 NEW</span>" if n.get("id") in _new_ids else ""
             _g, _c = _dec_glyph(n)
             # SUMMARY up front = one plain-language sentence (the `plain` field); fall back to the
             # choice only if a decision hasn't got one yet (the lint flags those).
@@ -1183,7 +1221,7 @@ def render_html(name, goal, bar, pl, nodes, knowledge, kinds, id2phase, phase_or
             dec_open = " open" if ex else ""
             spine.append(f"<details class='dec'{dec_open}><summary>"
                          f"<span class='gl' style='color:{_c}'>{_g}</span>"
-                         f"<span class='dsum'><span class='dq'>{_gloss(_e(n.get('decision','')), gmap)}</span>{you}{pl_tag}"
+                         f"<span class='dsum'><span class='dq'>{_gloss(_e(n.get('decision','')), gmap)}</span>{new_tag}{you}{pl_tag}"
                          f"<br><span class='dch'>{plain}</span></span></summary>"
                          f"<div class='dwhy'><span class='pr'>{_e(n.get('principle',''))}</span> "
                          f"{_ec(n.get('why',''))}</div>"

@@ -79,8 +79,15 @@ def main():
     # the PLANNING stage (before any experiment). Empty stub: viz omits the beat until /plan
     # fills it. Must stay empty (viz renders the whole file as prose — a comment would show up).
     w(paths.wfile(f"motivation.{name}.txt"), "")
-    paths.wfile(".active-project").write_text(name + "\n", encoding="utf-8")
-    print(f"\nregistered '{name}' and set it active. Empty substrate created — nothing to "
+    # bind THIS session to the new project (session-project-lock) — NOT a global .active-project write.
+    # home was stamped above; the lock is keyed by $CLAUDE_CODE_SESSION_ID so concurrent registrations
+    # in other sessions don't clobber. If there's no session id (a bare CLI run), the project is still
+    # reachable by cwd-inference (its home is stamped) or an explicit /trainlint:use.
+    sid = os.environ.get("CLAUDE_CODE_SESSION_ID", "").strip()
+    home = os.environ.get("TRAINLINT_PROJECT_HOME", "").strip() or os.getcwd()
+    if sid:
+        paths.write_session_lock(sid, name, home=home, bound_by="plan")
+    print(f"\nregistered '{name}' and bound it to this session. Empty substrate created — nothing to "
           f"hand-fill.\nNext: run `/trainlint:plan` — it establishes the full project context, "
           f"fills the facts files from the real code, drafts the decisions, then quizzes you.")
 

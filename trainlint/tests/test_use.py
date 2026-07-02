@@ -32,13 +32,13 @@ paths.wfile("project.proj-x.json").write_text('{"_comment":"x"}', encoding="utf-
 ok, msg = use.bind("ghost", session_id="s1")
 check(not ok and "no project" in msg, "binding an unregistered project is refused")
 
-# 2. bind with an explicit session id -> session lock + home + transitional global all set
+# 2. bind with an explicit session id -> session lock + home set (NO global write)
 ok, msg = use.bind("proj-x", home="/home/x/proj-x", session_id="s1")
 check(ok, "bind succeeds for a registered project")
 rec = paths.read_session_lock("s1")
 check(rec and rec["project"] == "proj-x" and rec["bound_by"] == "use", "session lock written (bound_by=use)")
 check(paths.project_home("proj-x") == "/home/x/proj-x", "home stamped")
-check((_TMP / ".active-project").read_text().strip() == "proj-x", "transitional global set")
+check(not (_TMP / ".active-project").exists(), "NO global .active-project is written (remove-global)")
 
 # 3. session ISOLATION — a second session binds elsewhere without touching the first
 paths.wfile("project.proj-y.json").write_text('{"_comment":"y"}', encoding="utf-8")

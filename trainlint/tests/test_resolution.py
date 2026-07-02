@@ -67,13 +67,13 @@ try:
 finally:
     os.chdir(_prev)
 
-# 6. transitional global fallback: no lock, cwd matches nothing, but .active-project set
+# 6. remove-global: a stale global .active-project is IGNORED (no fallback read)
 os.environ["CLAUDE_CODE_SESSION_ID"] = "sessNoMatch"
-paths.wfile(".active-project").write_text("global-proj\n", encoding="utf-8")
+paths.wfile(".active-project").write_text("stale-global\n", encoding="utf-8")
 _prev = os.getcwd()
 try:
-    os.chdir(_TMP)  # not inside any project home
-    check(paths.active_project() == "global-proj", "transitional global .active-project is the fallback")
+    os.chdir(_TMP)  # not inside any project home, no lock
+    check(paths.active_project() == "", "a stale global .active-project is IGNORED -> '' (remove-global)")
 finally:
     os.chdir(_prev)
 
@@ -83,7 +83,7 @@ os.environ["CLAUDE_CODE_SESSION_ID"] = "sessEmpty"
 _prev = os.getcwd()
 try:
     os.chdir(_TMP)
-    check(paths.active_project() == "", "unbound + no cwd match + no global -> '' (silent)")
+    check(paths.active_project() == "", "unbound + no cwd match -> '' (silent)")
 finally:
     os.chdir(_prev)
 

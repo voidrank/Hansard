@@ -4,14 +4,13 @@
   python3 use.py <name> [--home DIR]
 
 Sticky + explicit: a session stays on whatever it's bound to until you run this again (or
-/trainlint:plan <other>). No cwd auto-switch [switch-semantics]. It does three things:
+/trainlint:plan <other>). No cwd auto-switch [switch-semantics]. It does two things:
   1. stamps the project's `home` (= --home, else its existing home, else cwd) — the context->project
      link [project-home-field];
   2. writes the per-session lock data_root()/sessions/<session_id>.json [session-lock-store], keyed by
-     the session id from $CLAUDE_CODE_SESSION_ID (the CLI exposes it, so a plain script can bind);
-  3. TRANSITIONAL during cutover: also sets the old global .active-project, so /use takes effect NOW
-     under the not-yet-rewired resolver. This write is removed in the final remove-global cut — until
-     then it's the fallback that keeps every project resolvable [remove-global rollout order].
+     the session id from $CLAUDE_CODE_SESSION_ID (the CLI exposes it, so a plain script can bind).
+There is NO global .active-project write — the resolver reads only the session lock / cwd-home
+inference, so a bind here never affects any other session [remove-global].
 """
 import os
 import sys
@@ -35,14 +34,12 @@ def bind(name, home=None, session_id=None):
     paths.set_project_home(name, home)
     sid = session_id or os.environ.get("CLAUDE_CODE_SESSION_ID", "").strip()
     lock = paths.write_session_lock(sid, name, home=home, bound_by="use") if sid else None
-    # transitional global write (removed in remove-global) so the current resolver picks it up now
-    try:
-        paths.wfile(".active-project").write_text(name + "\n", encoding="utf-8")
-    except Exception:
-        pass
-    where = ("this session (%s)" % sid[:8]) if sid else "the global pointer (no session id in env)"
-    return True, (f"bound '{name}' -> {where}\n  home: {home}"
-                  + ("" if lock else "\n  (no CLAUDE_CODE_SESSION_ID; wrote the transitional global only)"))
+    if not lock:
+        # no session id in env -> can't bind THIS session. home is stamped, so cwd-inference will
+        # still resolve it when you're in its tree; there is no global pointer to fall back on.
+        return True, (f"stamped home for '{name}': {home}\n  (no CLAUDE_CODE_SESSION_ID — couldn't bind "
+                      f"this session; run inside {home} to resolve it by cwd, or set the env id)")
+    return True, f"bound '{name}' -> this session ({sid[:8]})\n  home: {home}"
 
 
 def main():

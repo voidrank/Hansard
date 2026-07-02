@@ -205,8 +205,9 @@ def active_project() -> str:
     """The active project for THIS session, resolved from context (session-project-lock).
     Order: (1) $HARNESS_PROJECT override; (2) this session's lock, keyed by $CLAUDE_CODE_SESSION_ID
     -- so concurrent sessions never clobber; (3) infer from cwd = the project whose home contains it
-    (longest prefix), persisting the lock so it's stable for the rest of the session; (4) TRANSITIONAL
-    global .active-project fallback (removed in the final remove-global cut); (5) '' -> silent."""
+    (longest prefix), persisting the lock so it's stable for the rest of the session; (4) '' -> silent.
+    There is NO global .active-project fallback: an unbound session in no project's tree resolves to ''
+    and the compass/doorman stay silent rather than narrate a stale machine-wide pointer (remove-global)."""
     n = os.environ.get("HARNESS_PROJECT", "").strip()
     if n:
         return n
@@ -220,14 +221,4 @@ def active_project() -> str:
         if sid:
             write_session_lock(sid, inferred, home=project_home(inferred), bound_by="infer")
         return inferred
-    # TRANSITIONAL: the old global at data_root/.active-project, kept only until remove-global (every
-    # project is home-stamped + /use ships, both done) -> then an unbound session goes silent, not
-    # stale. The legacy _PLUGIN/.active-project read is dropped: nothing writes it post-migration, so
-    # it only risked returning a stale plugin-dir value.
-    try:
-        g = data_root() / ".active-project"
-        if g.exists():
-            return g.read_text(encoding="utf-8").strip()
-    except Exception:
-        pass
     return ""

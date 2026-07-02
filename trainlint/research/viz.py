@@ -1495,10 +1495,11 @@ def _load_project(name):
 
 
 def generate(name):
-    """Write the THREE views of one project from a single load — the interactive report
-    research/viz/<name>.html, the offline slide deck <name>.slides.html, and the phone GLANCE
-    <name>.mobile.png (the one the close SendUserFile's so it lands in your hand) — and return
-    (htmlpath, slidespath, mobilepath, project-dict). One _load_project() pass, so none can drift."""
+    """Write the TWO views of one project from a single load — the interactive report
+    research/viz/<name>.html and the offline slide deck <name>.slides.html — and return
+    (htmlpath, slidespath, project-dict). One _load_project() pass, so neither can drift.
+    The report HTML is itself the phone deliverable: the close SendUserFile's it with
+    display:'render' and the Claude mobile app renders it inline (no PNG card needed)."""
     d = _load_project(name)
     outdir = ROOT / "viz"
     outdir.mkdir(exist_ok=True)
@@ -1514,15 +1515,7 @@ def generate(name):
                                         glossary=d["glossary"], clarify=d["clarify"],
                                         motivation=d["motivation"]),
                           encoding="utf-8")
-    # the phone preview — a path is useless on a phone, so render an inline-previewable card too.
-    # Folded from the same substrate (mobile.py reuses plan.* / split_goal); fail-open so a broken
-    # Pillow/font env never breaks the report — generate() still returns the html/slides.
-    try:
-        import mobile
-        mobilepath = mobile.build(name, outdir=outdir)
-    except Exception:
-        mobilepath = None
-    return htmlpath, slidespath, mobilepath, d
+    return htmlpath, slidespath, d
 
 
 def absorb(name, blob_path):
@@ -1576,7 +1569,7 @@ def absorb(name, blob_path):
     except Exception:
         pass
 
-    htmlpath, _slides, _mobile, _ = generate(name)
+    htmlpath, _slides, _ = generate(name)
     print(f"absorbed {added} glossary term(s) + {cadded} FAQ entr(y/ies) + {madded} mastered "
           f"decision(s) into {gpath.name} + {cpath.name} + plan-progress\nregenerated HTML: {htmlpath}")
 
@@ -1599,14 +1592,13 @@ def main():
     if blob:
         absorb(name, blob)
         return
-    htmlpath, slidespath, mobilepath, d = generate(name)
+    htmlpath, slidespath, d = generate(name)
     print(stdout_summary(name, d["goal"], d["bar"], d["pl"], d["nodes"], d["know"], htmlpath))
-    # The three sign-off lines every plan/execute close ends on. HTML/SLIDES are addresses;
-    # MOBILE is the artifact to SendUserFile so the picture lands in your hand (the report doorman
-    # checks all three are surfaced + the mobile preview was actually sent).
+    # The sign-off every plan/execute close ends on. HTML is BOTH the laptop address AND the phone
+    # deliverable: the close SendUserFile's the HTML with display:'render' and the Claude mobile app
+    # renders it inline (the report doorman checks the HTML was actually sent). SLIDES is the deck.
     print(f"SLIDES: {slidespath}  (open in a browser · ←/→ to page · Print → Save-as-PDF)")
-    if mobilepath is not None:
-        print(f"MOBILE: {mobilepath}  (SendUserFile this — it previews inline on your phone)")
+    print(f"PHONE: SendUserFile {htmlpath} with display:'render' — the app renders the report inline")
 
 
 if __name__ == "__main__":

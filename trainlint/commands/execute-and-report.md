@@ -96,15 +96,15 @@ This half is the old `viz`/`lint` surface, unchanged in capability. Run both:
   never prescribe abandoning a branch — that judgment is mine.
 - `python3 "${CLAUDE_PLUGIN_ROOT}/research/viz.py" <project>` — the self-contained HTML report (5-beat
   story · dated timeline · phase-ordered decision spine beside the search tree · knowledge-readiness
-  edges). It writes three views and prints three sign-off lines: `HTML: <path>` (the interactive
-  report), `SLIDES: <path>` (the offline deck), and `MOBILE: <path>` (a phone card, `<name>.mobile.png`).
-  Show me the compact ASCII summary it prints, **surface all three lines verbatim**, and **`SendUserFile`
-  the `MOBILE:` file** — an `HTML: /home/.../viz/<name>.html` path is useless on a phone, so the
-  `.mobile.png` card (goal · stance · pillars · main thread) is what actually lands in my hand and
-  previews inline as a zoomable image. The HTML opens in any browser; each decision in the spine
-  carries an expandable "💬 Ask about this" chatbot (browser-side Anthropic API, key stored only in
-  the browser). The `Stop` report-doorman enforces this delivery: a close that omits the `MOBILE:`
-  line or never sends the phone preview bounces ONCE for a rewrite.
+  edges). It writes two views and prints the sign-off lines: `HTML: <path>` (the interactive report),
+  `SLIDES: <path>` (the offline deck), and `PHONE:` (how to deliver it). Show me the compact ASCII
+  summary it prints, **surface the `HTML:`/`SLIDES:` lines verbatim**, and **`SendUserFile` the report
+  `HTML` file with `display:'render'`** — the Claude mobile app RENDERS an HTML file sent that way
+  inline, so I get the FULL interactive report on my phone (not a path, not a glance image). The HTML
+  opens in any browser too; each decision in the spine carries an expandable "💬 Ask about this"
+  chatbot (browser-side Anthropic API, key stored only in the browser). The `Stop` report-doorman
+  enforces this delivery: a close that renders the report but never `SendUserFile`s the `.html`
+  bounces ONCE for a rewrite.
 
 Wrap the output in the **explain-like-a-person voice** (same five rules `/trainlint:plan` closes
 with — and the `Stop` report-doorman enforces them here too):

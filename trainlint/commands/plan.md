@@ -187,28 +187,28 @@ Present this full picture to me FIRST and let me correct it.
    - **Everything else** — one line: "<M> still open across <phase>→<phase> — ask about any, or
      re-run `/trainlint:plan <id>` to drill one." A pointer, not a dump.
 
-   **End by rendering the report AND putting the picture in my hand.** After the prose report, run
-   `python3 "${CLAUDE_PLUGIN_ROOT}/research/viz.py" <project>` — it writes three views and prints
-   three sign-off lines: `HTML: <path>` (the interactive report), `SLIDES: <path>` (the offline
-   deck), and `MOBILE: <path>` (a phone-shaped card, `<name>.mobile.png`). `/trainlint:plan` and
-   `/trainlint:execute-and-report` BOTH close the same way. Do TWO things with that output:
-   1. **Surface all three lines** verbatim at the end of the report (`HTML:` / `SLIDES:` / `MOBILE:`).
-      A path is fine on a laptop. Before any experiment this is not an empty tool: `viz.py` detects
-      the planning stage and renders the plan story (motivation · goal · main thread · next) over a
-      full-width decision spine, suppressing the empty timeline/tree.
-   2. **`SendUserFile` the `MOBILE:` file** — an `HTML: /home/.../viz/<name>.html` path is useless on
-      a phone, so send the `.mobile.png` card so it previews INLINE as a zoomable image (the goal ·
-      stance · pillars · main thread at a glance). This is the "lands in my hand" step; don't just
-      name the path, SEND it.
+   **End by rendering the report AND putting it on my phone.** After the prose report, run
+   `python3 "${CLAUDE_PLUGIN_ROOT}/research/viz.py" <project>` — it writes two views and prints the
+   sign-off lines: `HTML: <path>` (the interactive report), `SLIDES: <path>` (the offline deck), and
+   `PHONE:` (how to deliver it). `/trainlint:plan` and `/trainlint:execute-and-report` BOTH close the
+   same way. Do TWO things with that output:
+   1. **Surface the `HTML:`/`SLIDES:` lines** verbatim at the end of the report. A path is fine on a
+      laptop. Before any experiment this is not an empty tool: `viz.py` detects the planning stage and
+      renders the plan story (motivation · goal · main thread · next) over a full-width decision spine,
+      suppressing the empty timeline/tree.
+   2. **`SendUserFile` the report `HTML` file with `display:'render'`** — the Claude mobile app RENDERS
+      an HTML file sent that way inline, so I get the FULL interactive report on my phone (not a path
+      I can't open, not a glance image). This is the "on my phone" step; don't just name the path,
+      SEND the `.html`.
 
    **This is enforced, not just asked.** A finished report is prose, not a tool action, so it used to
    reach no hook — the voice rules were persuasion the model drops at large context. The `Stop` hook
    (`hooks/reportcheck.py`) now reads the emitted report: if it walks the plan but skips the stance
    line or the map, leads with bare decision-ids, leans on undefined jargon (`cu_seqlens`, `TP=4`),
-   **omits the `HTML: <path>` sign-off** (the report wasn't rendered), or **omits the `MOBILE:` line
-   or never `SendUserFile`s the phone preview** (the picture never reached my hand), it bounces ONCE
-   for a rewrite. So the layout above — render `viz.py`, surface all three lines, send the mobile
-   card — is a contract the doorman checks, not a suggestion.
+   **omits the `HTML: <path>` sign-off** (the report wasn't rendered), or **never `SendUserFile`s the
+   report `.html`** (it never reached my phone), it bounces ONCE for a rewrite. So the layout above —
+   render `viz.py`, surface the lines, send the report `.html` — is a contract the doorman checks,
+   not a suggestion.
 
 If the plan ends up only partly written (we ran out of room, got pulled away), that's fine — the
 SessionStart briefing flags a registered-but-unwritten plan, the understanding-gate flags the

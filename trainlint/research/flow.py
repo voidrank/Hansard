@@ -99,8 +99,8 @@ def context_briefing(name, nodes):
 
 def _viz_directive():
     return ("[trainlint:execute-and-report] the search tree changed since you last saw it — render it and send "
-            f"me the picture: run `python3 {HERE / 'viz.py'}` and SendUserFile the `MOBILE: <path>` "
-            "card it prints (<name>.mobile.png — on mobile it lands as a zoomable image).")
+            f"me the report: run `python3 {HERE / 'viz.py'}` and SendUserFile the report `.html` it "
+            "prints (the `HTML: <path>` line) with display:'render' — the Claude mobile app renders it inline.")
 
 
 def _compass(name):

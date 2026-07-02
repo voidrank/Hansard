@@ -12,6 +12,7 @@ Until then the files are empty stubs and the doorman simply stays silent on this
 (empty facts -> placeholders no-match, never a crash).
 """
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -59,6 +60,10 @@ def main():
         print("wrote:", rel)
 
     w(paths.wfile(f"project.{name}.json"), json.dumps(ACTION_FACTS, ensure_ascii=False, indent=2))
+    # stamp the project's HOME = where it's being registered from (the context->project link the
+    # per-session resolver maps cwd/touched-paths against). Idempotent + preserves other keys, so
+    # re-registering just re-stamps home. os.getcwd() is overridable via $TRAINLINT_PROJECT_HOME.
+    paths.set_project_home(name, os.environ.get("TRAINLINT_PROJECT_HOME", "").strip() or os.getcwd())
     w(paths.wfile(f"facts.{name}.json"), json.dumps(RESEARCH_FACTS, ensure_ascii=False, indent=2))
     w(paths.wfile(f"knowledge.{name}.jsonl"),
       "# papers/refs indexed by the PROBLEM they solve. one JSON object per line.\n"

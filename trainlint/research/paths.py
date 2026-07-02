@@ -18,7 +18,10 @@ MIGRATION-SAFE: `resolve()` returns the data-dir path if the file is there, else
 LEGACY in-plugin location, so a half-migrated tree (or an un-updated module) still reads correctly.
 WRITES always target the data dir via `wfile()`.
 """
+import json
 import os
+import re
+from datetime import datetime, timezone
 from pathlib import Path
 
 _RESEARCH = Path(__file__).resolve().parent          # .../trainlint/<version>/research
@@ -67,16 +70,164 @@ def state_dir() -> Path:
     return s
 
 
+# --- per-SESSION project lock -----------------------------------------------------------
+# The store half of session-project-lock: replace the single machine-wide .active-project pointer
+# with a lock keyed by session_id, so each session binds its OWN project and concurrent sessions
+# never clobber each other. Kept in data_root() so it survives plugin version bumps (the 0.3.x cache
+# scar). ADDITIVE ONLY: nothing reads these yet — active_project() below is untouched until the
+# resolution-order decision rewires it. Hooks already receive session_id, so no new plumbing.
+
+def sessions_dir() -> Path:
+    """Where per-session locks live — data_root()/sessions/, created on demand."""
+    d = data_root() / "sessions"
+    try:
+        d.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        pass
+    return d
+
+
+def _session_lock_path(session_id: str) -> Path:
+    """One JSON file per session. session_id is sanitized to a safe filename (it comes from the
+    harness, but never trust it into a path); empty -> 'default'."""
+    safe = re.sub(r"[^A-Za-z0-9._-]", "_", str(session_id or "")).strip("_") or "default"
+    return sessions_dir() / f"{safe}.json"
+
+
+def read_session_lock(session_id: str):
+    """This session's lock as a dict {project, home, bound_by, ts}, or None if unbound / unreadable.
+    Fail-open: any error -> None, never raises (a hook must never break on a corrupt lock)."""
+    if not session_id:
+        return None
+    p = _session_lock_path(session_id)
+    try:
+        if p.exists():
+            rec = json.loads(p.read_text(encoding="utf-8"))
+            return rec if isinstance(rec, dict) and rec.get("project") else None
+    except Exception:
+        return None
+    return None
+
+
+def write_session_lock(session_id: str, project: str, home: str = "", bound_by: str = "plan"):
+    """Bind this session to `project`. `home` is the project's dir (the context->project link);
+    `bound_by` records HOW it was bound ('plan' | 'infer' | 'use'). Returns the lock path, or None
+    if it couldn't write. Overwrites any existing lock for the session (sticky-but-explicit switch:
+    callers decide WHEN to rebind; the store just persists it)."""
+    if not session_id or not project:
+        return None
+    rec = {"project": str(project), "home": str(home or ""), "bound_by": str(bound_by),
+           "ts": datetime.now(timezone.utc).isoformat(timespec="seconds")}
+    p = _session_lock_path(session_id)
+    try:
+        p.write_text(json.dumps(rec, ensure_ascii=False), encoding="utf-8")
+        return p
+    except Exception:
+        return None
+
+
+# --- a project's HOME (the context->project link) ---------------------------------------
+# project-home-field: the resolver can only map cwd/a touched path back to a project if each project
+# records the directory it belongs to. `home` is stamped at registration (new_project) and re-stampable
+# at plan/use time. Stored IN project.<name>.json so it travels with the rest of a project's facts.
+
+def _read_json(fname):
+    p = resolve(fname)
+    try:
+        if p.exists():
+            d = json.loads(p.read_text(encoding="utf-8"))
+            return d if isinstance(d, dict) else {}
+    except Exception:
+        pass
+    return {}
+
+
+def project_home(name: str) -> str:
+    """The directory a project belongs to (the context->project link), or '' if unstamped."""
+    return str(_read_json(f"project.{name}.json").get("home") or "")
+
+
+def set_project_home(name: str, home: str):
+    """Stamp/replace project.<name>.json's `home`, PRESERVING every other key (the doorman's danger
+    patterns /trainlint:plan fills). Returns the written path, or None. Fail-open."""
+    if not name or not home:
+        return None
+    fname = f"project.{name}.json"
+    d = _read_json(fname)
+    d["home"] = str(home)
+    p = wfile(fname)
+    try:
+        p.write_text(json.dumps(d, ensure_ascii=False, indent=2), encoding="utf-8")
+        return p
+    except Exception:
+        return None
+
+
+def _all_project_homes():
+    """{project_name: home} for every registered project that has a `home` stamped (across data_root
+    and the legacy plugin dirs). The table the cwd-inference resolves against."""
+    out = {}
+    for base in (data_root(), _RESEARCH, _PLUGIN):
+        try:
+            for p in base.glob("project.*.json"):
+                name = p.name[len("project."):-len(".json")]
+                if name in out or name == "example":
+                    continue
+                home = _read_json(p.name).get("home")
+                if home:
+                    out[name] = str(home)
+        except Exception:
+            continue
+    return out
+
+
+def _infer_project_from_cwd(cwd):
+    """The project whose `home` is the LONGEST prefix of cwd (a session working inside project X's
+    tree resolves to X), or '' if none matches. Fail-open."""
+    if not cwd:
+        return ""
+    try:
+        cwd = str(Path(cwd).resolve())
+    except Exception:
+        cwd = str(cwd)
+    best, best_len = "", -1
+    for name, home in _all_project_homes().items():
+        try:
+            h = str(Path(home).resolve())
+        except Exception:
+            h = str(home)
+        if (cwd == h or cwd.startswith(h.rstrip("/") + "/")) and len(h) > best_len:
+            best, best_len = name, len(h)
+    return best
+
+
 def active_project() -> str:
-    """The active project name: $HARNESS_PROJECT, else data_root()/.active-project, else the legacy
-    plugin-root/.active-project."""
+    """The active project for THIS session, resolved from context (session-project-lock).
+    Order: (1) $HARNESS_PROJECT override; (2) this session's lock, keyed by $CLAUDE_CODE_SESSION_ID
+    -- so concurrent sessions never clobber; (3) infer from cwd = the project whose home contains it
+    (longest prefix), persisting the lock so it's stable for the rest of the session; (4) TRANSITIONAL
+    global .active-project fallback (removed in the final remove-global cut); (5) '' -> silent."""
     n = os.environ.get("HARNESS_PROJECT", "").strip()
     if n:
         return n
-    for p in (data_root() / ".active-project", _PLUGIN / ".active-project"):
-        try:
-            if p.exists():
-                return p.read_text(encoding="utf-8").strip()
-        except Exception:
-            pass
+    sid = os.environ.get("CLAUDE_CODE_SESSION_ID", "").strip()
+    if sid:
+        rec = read_session_lock(sid)
+        if rec and rec.get("project"):
+            return rec["project"]
+    inferred = _infer_project_from_cwd(os.getcwd())
+    if inferred:
+        if sid:
+            write_session_lock(sid, inferred, home=project_home(inferred), bound_by="infer")
+        return inferred
+    # TRANSITIONAL: the old global at data_root/.active-project, kept only until remove-global (every
+    # project is home-stamped + /use ships, both done) -> then an unbound session goes silent, not
+    # stale. The legacy _PLUGIN/.active-project read is dropped: nothing writes it post-migration, so
+    # it only risked returning a stale plugin-dir value.
+    try:
+        g = data_root() / ".active-project"
+        if g.exists():
+            return g.read_text(encoding="utf-8").strip()
+    except Exception:
+        pass
     return ""

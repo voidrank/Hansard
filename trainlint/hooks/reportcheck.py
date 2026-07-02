@@ -83,12 +83,12 @@ def _last_assistant_text(transcript_path):
         return ""
 
 
-def _sent_mobile(transcript_path, tail_lines=90):
-    """True if the close ACTUALLY delivered the phone preview — a `SendUserFile` tool call whose
-    input references the mobile artifact ('mobile' / a .png). This is the 'reaches your hand' half
-    of the delivery gate: a `MOBILE: <path>` line in the prose is only a path; this confirms the
-    file was sent. Bounded to the transcript TAIL (the send + report are adjacent in the close
-    turn) so a mobile-send from a much earlier turn can't false-satisfy. Conservative + fail-open:
+def _sent_report_html(transcript_path, tail_lines=90):
+    """True if the close ACTUALLY delivered the report to the phone — a `SendUserFile` tool call
+    whose input references a report `.html` (the Claude mobile app renders HTML inline via
+    display:'render', so the phone gets the FULL report; a path in the prose is only a path, this
+    confirms the FILE was sent). Bounded to the transcript TAIL (the send + report are adjacent in
+    the close turn) so a send from a much earlier turn can't false-satisfy. Conservative + fail-open:
     any parse error -> treat as not-confirmed for the line scanned, never raises."""
     try:
         p = Path(transcript_path)
@@ -115,7 +115,7 @@ def _sent_mobile(transcript_path, tail_lines=90):
                 if b.get("name") != "SendUserFile":
                     continue
                 blob = json.dumps(b.get("input", {}), ensure_ascii=False).lower()
-                if "mobile" in blob or ".png" in blob:
+                if ".html" in blob:
                     return True
         return False
     except Exception:
@@ -457,25 +457,18 @@ def check(data):
         if not html_signed:
             misses.append("the HTML sign-off — run `python3 research/viz.py <project>` and end on its "
                           "`HTML: <path>` line so I always have the one-glance report to open")
-        # E2. the DELIVERY gate — the close must put the picture IN MY HAND, not just print a path.
-        # A `/home/.../viz/<name>.html` address is useless on a phone, so viz.py also renders a
-        # phone card (<name>.mobile.png). The close must (a) surface the `MOBILE: <path>` sign-off
-        # AND (b) actually `SendUserFile` it, so it previews inline on my phone. Required only on a
+        # E2. the DELIVERY gate — the close must put the report ON MY PHONE, not just print a path.
+        # A `/home/.../viz/<name>.html` address is useless on a phone, but the Claude mobile app
+        # RENDERS an HTML file sent with display:'render' inline — so the close must actually
+        # `SendUserFile` the report `.html`, and I get the full report on my phone. Required only on a
         # rendered close (when the HTML sign-off is present) — a report that never rendered viz is
         # already bounced by E above, so this doesn't double-fire on it.
         if html_signed:
-            mobile_line = bool(re.search(r"\bMOBILE:\s*\S+\.(?:png|html)\b", text, re.I)) \
-                or "📱" in text
-            sent = _sent_mobile(data.get("transcript_path", ""))
-            if not (mobile_line and sent):
-                lack = []
-                if not mobile_line:
-                    lack.append("surface the `MOBILE: <path>` line viz.py prints")
-                if not sent:
-                    lack.append("actually `SendUserFile` that mobile preview so it lands on my phone")
-                misses.append("the DELIVERY gate — a path I can't open from my phone isn't 'in hand'. "
-                              + " and ".join(lack)
-                              + " (viz.py renders `<name>.mobile.png`; send it, don't just name it)")
+            sent = _sent_report_html(data.get("transcript_path", ""))
+            if not sent:
+                misses.append("the DELIVERY gate — a path I can't open from my phone isn't delivered. "
+                              "`SendUserFile` the report `.html` with display:'render' so the full "
+                              "report renders inline on my phone (don't just name the path)")
         # F. the BUILT lens (decided≠built). The failure this whole gate exists to stop in reports:
         # a plan sitting at 8/9 "decided" with nothing produced reads as almost-done. If ANY decision
         # is decided-on-paper (a choice typed, no artifact on disk), a plan report must SAY so —

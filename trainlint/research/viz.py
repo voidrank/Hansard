@@ -510,6 +510,19 @@ CHAT_JS = r"""
   function setMem(m){localStorage.setItem(LS,JSON.stringify(m))}
   function esc(s){return (s==null?'':String(s)).replace(/[&<>]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;'}[c]})}
   function glossaryText(){return (DATA.glossary||[]).map(function(g){return '- '+g.term+': '+g.plain+(g.why?(' ('+g.why+')'):'')}).join('\n')}
+  function globalCtx(){var c=DATA.context||{},d=(c.decisions||[]);return d.length?('\n\nFULL PLAN (for cross-reference only): '+d.join(' | ')):'';}
+  var MEMTAIL='If the questions reveal concepts the user did not understand, append AT THE VERY END a fenced block exactly like:\n'+
+      '```memory\n{"terms":[{"term":"...","plain":"one-line plain meaning","why":"why it matters here"}]}\n```\n'+
+      'Only include genuinely-clarified concepts; omit the block entirely if none.';
+  function sysPromptBlock(b){
+    return 'You are a tutor embedded in a research-planning report for the project "'+DATA.project+'".\n'+
+      'PROJECT GOAL: '+DATA.goal+'\n\n'+
+      'You answer questions about ONE SECTION of the report:\n'+
+      '  Section: '+b.title+'\n'+
+      '  Content: '+b.text+'\n\n'+
+      'PROJECT GLOSSARY:\n'+glossaryText()+globalCtx()+'\n\n'+
+      'Answer clearly and concisely, grounded in THIS section; you may cross-reference the plan. '+MEMTAIL;
+  }
   function sysPrompt(dec){
     return 'You are a tutor embedded in a research-planning report for the project "'+DATA.project+'".\n'+
       'PROJECT GOAL: '+DATA.goal+'\n\n'+
@@ -518,7 +531,7 @@ CHAT_JS = r"""
       '  Chosen: '+(dec.choice||'(still open)')+'\n'+
       '  Principle: '+(dec.principle||'')+'\n'+
       '  Why: '+(dec.why||'')+'\n\n'+
-      'PROJECT GLOSSARY:\n'+glossaryText()+'\n\n'+
+      'PROJECT GLOSSARY:\n'+glossaryText()+globalCtx()+'\n\n'+
       'Answer clearly and concisely, grounded in this context; define jargon in plain language. '+
       'If the questions reveal concepts the user did not understand, append AT THE VERY END a fenced block exactly like:\n'+
       '```memory\n{"terms":[{"term":"...","plain":"one-line plain meaning","why":"why it matters here"}]}\n```\n'+
@@ -529,13 +542,13 @@ CHAT_JS = r"""
     if(m){clean=text.replace(m[0],'').trim();try{var o=JSON.parse(m[1].trim());if(o&&o.terms)terms=o.terms;}catch(e){}}
     return {clean:clean,terms:terms};
   }
-  async function ask(dec,convo){
+  async function ask(sys,convo){
     var key=localStorage.getItem(KK);
     if(!key) throw new Error('No API key set — click "Set API key" (bottom-right).');
     var res=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',
       headers:{'content-type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01',
         'anthropic-dangerous-direct-browser-access':'true'},
-      body:JSON.stringify({model:localStorage.getItem(MK)||DATA.model,max_tokens:1024,system:sysPrompt(dec),messages:convo})});
+      body:JSON.stringify({model:localStorage.getItem(MK)||DATA.model,max_tokens:1024,system:sys,messages:convo})});
     if(!res.ok){var t=await res.text();throw new Error('API '+res.status+': '+t.slice(0,200));}
     var j=await res.json();
     return (j.content||[]).filter(function(b){return b.type==='text'}).map(function(b){return b.text}).join('');
@@ -557,18 +570,24 @@ CHAT_JS = r"""
     box.innerHTML=h;
   }
   function initWidget(node){
-    var decId=node.getAttribute('data-dec'), dec=DATA.decisions[decId]; if(!dec) return;
+    // one widget for BOTH decision blocks (data-dec -> DATA.decisions) and every other report
+    // block (data-block -> DATA.blocks). Decisions are just one KIND of block (generic-widget).
+    var decId=node.getAttribute('data-dec'), blockId=node.getAttribute('data-block');
+    var id, sys, ph;
+    if(decId){var dec=DATA.decisions[decId]; if(!dec) return; id=decId; sys=sysPrompt(dec); ph='Ask anything about this decision…';}
+    else if(blockId){var b=(DATA.blocks||{})[blockId]; if(!b) return; id=blockId; sys=sysPromptBlock(b); ph='Ask anything about this section…';}
+    else return;
     var convo=[];
     var btn=document.createElement('button'); btn.className='tl-ask'; btn.textContent='💬 Ask about this';
     var panel=document.createElement('div'); panel.className='tl-panel';
     var saved=document.createElement('div'), log=document.createElement('div'); log.className='tl-log';
     var inRow=document.createElement('div'); inRow.className='tl-in';
-    var ta=document.createElement('textarea'); ta.placeholder='Ask anything about this decision… (Cmd/Ctrl+Enter to send)';
+    var ta=document.createElement('textarea'); ta.placeholder=ph+' (Cmd/Ctrl+Enter to send)';
     var send=document.createElement('button'); send.textContent='Send';
     inRow.appendChild(ta); inRow.appendChild(send);
     panel.appendChild(saved); panel.appendChild(log); panel.appendChild(inRow);
     node.appendChild(btn); node.appendChild(panel);
-    renderSaved(saved,decId);
+    renderSaved(saved,id);
     btn.addEventListener('click',function(e){e.preventDefault();panel.classList.toggle('open');});
     function addMsg(cls,who,txt){var d=document.createElement('div');d.className='tl-msg '+cls;d.innerHTML='<b>'+who+'</b> '+esc(txt);log.appendChild(d);log.scrollTop=log.scrollHeight;return d;}
     async function go(){
@@ -576,13 +595,13 @@ CHAT_JS = r"""
       addMsg('u','You:',q); convo.push({role:'user',content:q});
       send.disabled=true; var wait=addMsg('a','Claude:','…thinking');
       try{
-        var raw=await ask(dec,convo), pm=parseMemory(raw);
+        var raw=await ask(sys,convo), pm=parseMemory(raw);
         wait.innerHTML="<b>Claude:</b> "+esc(pm.clean); convo.push({role:'assistant',content:raw});
-        var m=mem(); m.faq=m.faq||{}; m.faq[decId]=m.faq[decId]||[];
-        m.faq[decId].push({q:q,a:pm.clean,ts:new Date().toISOString()});
+        var m=mem(); m.faq=m.faq||{}; m.faq[id]=m.faq[id]||[];
+        m.faq[id].push({q:q,a:pm.clean,ts:new Date().toISOString()});
         m.glossary=m.glossary||[];
-        pm.terms.forEach(function(t){if(t&&t.term)m.glossary.push({term:t.term,plain:t.plain||'',why:t.why||'',dec:decId})});
-        setMem(m); renderSaved(saved,decId);
+        pm.terms.forEach(function(t){if(t&&t.term)m.glossary.push({term:t.term,plain:t.plain||'',why:t.why||'',dec:id})});
+        setMem(m); renderSaved(saved,id);
       }catch(err){wait.className='tl-msg err';wait.innerHTML='⚠ '+esc(err.message);}
       send.disabled=false; ta.focus();
     }
@@ -803,8 +822,9 @@ def _render_beats(beats):
         if b.get("tail"):
             body.append(f"<div class='tail'>{b['tail']}</div>")  # tail is pre-escaped HTML
         body.append("</div>")
+        _bchat = "<div class='tl-chat' data-block='what-we-want'></div>" if b.get("cls") == "want" else ""
         H.append(f"<div class='beat {b['cls']}'><div class='bl'>{_e(b['label'])}</div>"
-                 f"{''.join(body)}</div>")
+                 f"{''.join(body)}{_bchat}</div>")
     H.append("</div>")
     return "\n".join(H)
 
@@ -872,7 +892,7 @@ def focus_section_html(name):
             f"<span class='ftitle'>{_ec(it.get('title',''))}</span>{dec}</div>"
             f"<div class='ftry'>{_ec(it.get('trying',''))}</div>{nxt}</div>")
     return ("<div class='focussec'><div class='fshdr'>🎯 CURRENT FOCUS — what we're actively trying now</div>"
-            + "".join(cards) + "</div>")
+            + "".join(cards) + "<div class='tl-chat' data-block='current-focus'></div></div>")
 
 
 def data_section_html(pl):
@@ -897,7 +917,7 @@ def data_section_html(pl):
     if not blocks:
         return ""
     return ("<div class='datasec'><div class='dshdr'>DATA — what the rewriter reads &amp; writes</div>"
-            + "".join(blocks) + "</div>")
+            + "".join(blocks) + "<div class='tl-chat' data-block='data-section'></div></div>")
 
 
 def _quiz_lead(s, cap=180):
@@ -998,10 +1018,41 @@ def _chat_blob(name, goal, pl, glossary, clarify):
                        "principle": n.get("principle", ""), "why": n.get("why", ""),
                        "faq": clar_by.get(did, []), "terms": gloss_by.get(did, []),
                        "quiz": quizmap.get(did)}
+    # per-BLOCK grounding: {title, text} for each report section, assembled from the SAME sources
+    # viz renders from — so every block's chatbot answers from its own content (block-context-blob).
+    blocks = {}
+    ex_txt = []
+    for n in pl:
+        for e in (n.get("examples") or []):
+            if isinstance(e, dict):
+                ex_txt.append(f"{e.get('cap','')}: {e.get('code','')}")
+    if ex_txt:
+        blocks["data-section"] = {"title": "DATA — what the report's project reads & writes",
+                                  "text": "  ".join(ex_txt)}
+    try:
+        foc = [json.loads(l) for l in paths.resolve(f"focus.{name}.jsonl").read_text(encoding="utf-8").splitlines() if l.strip()]
+    except Exception:
+        foc = []
+    if foc:
+        blocks["current-focus"] = {"title": "CURRENT FOCUS",
+            "text": "  ".join(f"[{f.get('status')}] {f.get('title')}: {f.get('trying','')} NEXT: {f.get('next','')}" for f in foc)}
+    try:
+        stg = [json.loads(l) for l in paths.resolve(f"pipeline.{name}.jsonl").read_text(encoding="utf-8").splitlines() if l.strip()]
+    except Exception:
+        stg = []
+    if stg:
+        blocks["pipeline"] = {"title": "Pipeline — the data flow",
+                              "text": " -> ".join(f"{s.get('label')} ({s.get('note')})" for s in stg)}
+    if goal:
+        blocks["what-we-want"] = {"title": "WHAT WE WANT", "text": " ".join(goal.split())[:600]}
+    # GLOBAL context so any block's (or decision's) chatbot can cross-reference the whole plan
+    context = {"goal": " ".join((goal or "").split())[:300],
+               "decisions": [f"{n.get('id')}: {n.get('plain') or n.get('decision','')}" for n in pl if n.get("id")],
+               "blocks": [b["title"] for b in blocks.values()]}
     data = {"project": name, "goal": goal, "model": "claude-opus-4-8",
             "glossary": [{"term": g.get("term", ""), "plain": g.get("plain", ""),
                           "why": g.get("why", "")} for g in glossary],
-            "decisions": decmap}
+            "decisions": decmap, "blocks": blocks, "context": context}
     # escape '<' so the JSON can never break out of its <script> host
     return json.dumps(data, ensure_ascii=False).replace("<", "\\u003c")
 
@@ -1031,7 +1082,8 @@ def pipeline_html(name):
         if i < len(stages) - 1:
             cards.append("<div class='pp-arr'>▶</div>")
     return ("<h2 class='sec'>Pipeline — the data flow</h2>"
-            "<div class='pp'>" + "".join(cards) + "</div>")
+            "<div class='pp'>" + "".join(cards) + "</div>"
+            "<div class='tl-chat' data-block='pipeline'></div>")
 
 
 def _gloss_map(glossary):
@@ -1503,6 +1555,11 @@ def generate(name):
     d = _load_project(name)
     outdir = ROOT / "viz"
     outdir.mkdir(exist_ok=True)
+    try:  # silently keep a loopback server up so the JS-heavy report (chatbots) is browsable
+        import serve
+        serve.ensure(outdir)
+    except Exception:
+        pass
     htmlpath = outdir / f"{name}.html"
     htmlpath.write_text(render_html(d["name"], d["goal"], d["bar"], d["pl"], d["nodes"],
                                     d["know"], d["kinds"], d["id2phase"], d["phase_order"],
@@ -1599,6 +1656,14 @@ def main():
     # renders it inline (the report doorman checks the HTML was actually sent). SLIDES is the deck.
     print(f"SLIDES: {slidespath}  (open in a browser · ←/→ to page · Print → Save-as-PDF)")
     print(f"PHONE: SendUserFile {htmlpath} with display:'render' — the app renders the report inline")
+    try:  # silent loopback server (started in generate) — surface the browser URL where the
+        import serve  # JS-heavy report (per-block chatbots, quizzes) actually works
+        _u = serve.url()  # check-only, never spawns a 2nd server (generate() is the spawn point)
+        if _u:
+            print(f"SERVE: {_u}/{name}.html  (browse in a REAL browser — chatbots/JS run here, "
+                  f"unlike a JS-stripped inline preview; reach it via  ssh -L {_u.rsplit(':',1)[-1]}:127.0.0.1:{_u.rsplit(':',1)[-1]} <host>)")
+    except Exception:
+        pass
 
 
 if __name__ == "__main__":

@@ -4,13 +4,13 @@ the active project's facts and expands them.
 
 Active project resolution (first match wins):
   1. env HARNESS_PROJECT
-  2. <plugin_root>/.active-project  (a file containing the project name)
+  2. this session's lock / the project whose home contains your cwd (research/paths.py active_project())
   3. "example"
 
 Facts file: <plugin_root>/project.<name>.json
 
 To port the harness to another project: write project.<name>.json with the same
-keys, set .active-project to <name>. The rules never change; only facts do.
+keys, and bind it to your session with /trainlint:use <name>. The rules never change; only facts do.
 """
 import json
 import os

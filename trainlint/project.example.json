@@ -1,5 +1,5 @@
 {
-  "_comment": "PROJECT FACTS for the example project. The portable rules reference these via {{name}}. To port the harness to another project, copy this file to project.<name>.json, fill in the same keys with that project's facts, and put <name> in .active-project (or env HARNESS_PROJECT). The rules never change; only this file does.",
+  "_comment": "PROJECT FACTS for the example project. The portable rules reference these via {{name}}. To port the harness to another project, copy this file to project.<name>.json, fill in the same keys with that project's facts, and bind it to your session with /trainlint:use <name> (or env HARNESS_PROJECT). The rules never change; only this file does.",
   "reference_impl": "the reference training repo",
   "frozen_component": "the frozen audio tokenizer",
   "good_storage": "/mnt/minio (full-flash)",

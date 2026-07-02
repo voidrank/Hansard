@@ -7,7 +7,7 @@ ACTS and then SHOWS. It reads the plan, drives the single decision that gates th
 folds the result back in. The always-on doorman (hooks) watches the work as you run it; this
 command is what aims the work and what closes the loop afterward.
 
-Active project = `${CLAUDE_PLUGIN_ROOT}/.active-project`. Plan lives at
+Active project = resolved PER SESSION from context (env $HARNESS_PROJECT / this session's lock / cwd's project home). Plan lives at
 `${CLAUDE_PLUGIN_ROOT}/research/plan.<active-project>.jsonl`. If there is **no plan yet**, stop and
 tell me to run `/trainlint:plan` first — there is nothing to drive without decisions. If every
 decision is already `verified`, skip the driving and go straight to the report.

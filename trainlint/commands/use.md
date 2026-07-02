@@ -10,9 +10,9 @@ Run:
 
 It (1) stamps the project's `home` = `--home`, else its existing home, else the current directory
 (the context→project link); (2) writes this session's lock at `data_root()/sessions/<session_id>.json`
-from `$CLAUDE_CODE_SESSION_ID`, keyed to the session so concurrent sessions never clobber; and
-(3) transitionally — until the global `.active-project` is removed — also sets it, so the bind takes
-effect immediately under the current resolver. Surface the confirmation line it prints.
+from `$CLAUDE_CODE_SESSION_ID`, keyed to the session so concurrent sessions never clobber. There is
+NO global `.active-project` — the resolver reads only the session lock / cwd-home inference, so a bind
+here never touches any other session. Surface the confirmation line it prints.
 
 Sticky + explicit: the session stays on this project until you run `/trainlint:use` again or
 `/trainlint:plan <other>`. There is NO cwd auto-switch — moving directories mid-session never

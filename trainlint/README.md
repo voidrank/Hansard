@@ -110,7 +110,7 @@ and you can interject); a background workflow is available only for a very large
 
 ## Project flow (`research/flow.py`, automatic, per project — never tied to a session)
 
-Anchored to the **project** (the `.active-project` name), to work events, and to each turn — *not*
+Anchored to the **project** (resolved per session from context), to work events, and to each turn — *not*
 to session boundaries (a session may never end):
 
 - **context** — `SessionStart` injects a briefing led by the **goal + main thread**; it flags an

@@ -228,7 +228,7 @@ hooks/facts.py         project facts loading + {{placeholder}} expansion
 hooks/router.py        orchestrator: merge three stages → land on a channel; fail-open; always exit 0
 triggers.jsonl         coach rules: SECTION1 portable kernel / SECTION2 general principles + {{facts}}
 project.example.json   the example project's facts (fills {{placeholders}}); to switch projects, copy to project.<name>.json
-.active-project        (optional) write the project name; otherwise env HARNESS_PROJECT, otherwise default example
+sessions/<id>.json     the per-session project lock (data_root); resolver order: env HARNESS_PROJECT / session lock / cwd's project home
 tests/                 must run when adding rules; cases.jsonl is the behavior snapshot
 ```
 
@@ -238,7 +238,7 @@ The rules don't change, only the facts do:
 
 1. `cp project.example.json project.<new project>.json`, fill each key with the new project's facts
    (frozen component, unreliable-storage regex, preprocessing-trap regex, reference implementation, locked-config regex …).
-2. `echo <new project> > .active-project` (or set `HARNESS_PROJECT`).
+2. bind it to your session: `/trainlint:use <new project>` (or set `HARNESS_PROJECT`).
 3. Keep `triggers.jsonl` SECTION 1 (process/diagnostics) as-is; if SECTION 2 + `checks.jsonl` have
    a failure mode unique to the new project that the existing principles don't cover, **add a new general-principle rule** (keep referencing facts via `{{}}`).
 4. `python3 tests/run.py` (add a few cases for the new project).

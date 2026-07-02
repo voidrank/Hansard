@@ -2,7 +2,7 @@
 """Where a PROJECT's data lives — decoupled from the plugin's versioned code dir.
 
 Per-project files (goal / plan / log / focus / pipeline / glossary / facts / knowledge /
-motivation / clarify / tag_* / project.<name>.json / .active-project / .state) must NOT sit
+motivation / clarify / tag_* / project.<name>.json / sessions / .state) must NOT sit
 under the versioned plugin cache (`.../trainlint/<version>/`), which an upgrade wipes. They live
 in a STABLE data dir:
 
@@ -71,11 +71,11 @@ def state_dir() -> Path:
 
 
 # --- per-SESSION project lock -----------------------------------------------------------
-# The store half of session-project-lock: replace the single machine-wide .active-project pointer
-# with a lock keyed by session_id, so each session binds its OWN project and concurrent sessions
-# never clobber each other. Kept in data_root() so it survives plugin version bumps (the 0.3.x cache
-# scar). ADDITIVE ONLY: nothing reads these yet — active_project() below is untouched until the
-# resolution-order decision rewires it. Hooks already receive session_id, so no new plumbing.
+# session-project-lock: there is no machine-wide "current project" pointer. Each session binds its
+# OWN project via a lock keyed by session_id, so concurrent sessions never clobber. active_project()
+# below reads these (session lock, then cwd->home inference); the old global .active-project is gone.
+# Kept in data_root() so it survives plugin version bumps (the 0.3.x cache scar). Hooks already
+# receive session_id (and the CLI exposes $CLAUDE_CODE_SESSION_ID), so no new plumbing.
 
 def sessions_dir() -> Path:
     """Where per-session locks live — data_root()/sessions/, created on demand."""

@@ -4,11 +4,12 @@ argument-hint: "[review | status | from-log [session-id|path] | <free-text conte
 ---
 The PLAN is the project's floor plan: an ordered list of DECISIONS (one JSONL line each in
 `${CLAUDE_PLUGIN_ROOT}/research/plan.<active-project>.jsonl`), every one tagged with the
-transferable PRINCIPLE that governs it. Active project = `${CLAUDE_PLUGIN_ROOT}/.active-project`.
+transferable PRINCIPLE that governs it. Active project = resolved PER SESSION from context (env
+$HARNESS_PROJECT, else this session's lock, else the project whose home contains your cwd).
 
 ## Scaffold first if the project isn't registered yet
 `/trainlint:plan` is the single entry point — it registers a new project AND plans it. Before
-anything else, check `${CLAUDE_PLUGIN_ROOT}/.active-project` and whether
+anything else, check the active project (env $HARNESS_PROJECT / this session's lock / cwd's project home) and whether
 `project.<name>.json` / `research/facts.<name>.json` exist for it. If the project the operator
 named isn't registered yet (or `$ARGUMENTS` is a fresh project name with no substrate), run the
 thin registrar first — `python3 "${CLAUDE_PLUGIN_ROOT}/research/new_project.py" <name>` — which
@@ -73,7 +74,7 @@ Present this full picture to me FIRST and let me correct it.
 
 ## Draft / update the plan (foreground)
 
-1. Read `${CLAUDE_PLUGIN_ROOT}/.active-project`, then `research/goal.<name>.txt`,
+1. Read the active project (resolved per session), then `research/goal.<name>.txt`,
    `project.<name>.json`, `research/facts.<name>.json`, and the ACTUAL code/configs they point to.
    If `$ARGUMENTS` is free text (e.g. "focus on the turn-based audio discussion"), let it steer you.
 2. Do the COMPLETE-CONTEXT exposition above. Show me, let me correct it. Then distill the project's

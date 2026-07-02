@@ -78,4 +78,4 @@ per-project facts (swap these to port — mechanism untouched)
 
 `/trainlint:plan <name>` (it registers the project, then plans it) — or hand-write
 `facts/knowledge/log/plan/goal.<name>.*`. The mechanism and `principles.jsonl` are unchanged.
-Active project = `HARNESS_PROJECT` env / `.active-project` file / default `example`.
+Active project = `HARNESS_PROJECT` env / this session's lock / the project whose home contains your cwd.

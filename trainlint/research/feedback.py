@@ -108,13 +108,23 @@ def _classify(items):
         s, e = raw.find("["), raw.rfind("]")
         out = {}
         for row in json.loads(raw[s:e + 1]):
-            if isinstance(row, dict) and row.get("kind") in ("confusion", "correction", "readability"):
-                out[int(row.get("i", 0)) - 1] = {"kind": row["kind"],
-                                                 "insight": str(row.get("insight", "")).strip(),
-                                                 "action": str(row.get("action", "")).strip()}
+            if not isinstance(row, dict) or row.get("kind") not in ("confusion", "correction", "readability"):
+                continue
+            idx = _as_idx(row.get("i"))  # a malformed index skips that row, not the whole batch
+            if idx is not None:
+                out[idx] = {"kind": row["kind"], "insight": str(row.get("insight", "")).strip(),
+                            "action": str(row.get("action", "")).strip()}
         return out
     except Exception:
         return {}
+
+
+def _as_idx(v):
+    """LLM-supplied 1-based item index -> 0-based int, or None if it isn't a clean integer."""
+    try:
+        return int(v) - 1
+    except (TypeError, ValueError):
+        return None
 
 
 def digest(name):
@@ -149,7 +159,14 @@ def digest(name):
             touched.append(r)
     if not recs and not updated:
         return []  # nothing new, nothing reclassified -> leave the file byte-identical
+    _merge(p, updated, recs)
+    return touched
 
+
+def _merge(p, updated, new_recs):
+    """Line-preserving merge on a fresh read: '#' comments, blank and unparseable lines pass
+    through untouched, rows appended by another process meanwhile survive; rows whose (src,key)
+    is in `updated` are replaced in place; `new_recs` not already present are appended."""
     raw = p.read_text(encoding="utf-8").splitlines() if p.exists() else []
     out, seen = [], set()
     for line in raw:
@@ -166,13 +183,83 @@ def digest(name):
                     out.append(json.dumps(updated[k], ensure_ascii=False))
                     continue
         out.append(line)
-    for r in recs:
+    for r in new_recs:
         if (r.get("src"), r.get("key")) not in seen:
             out.append(json.dumps(r, ensure_ascii=False))
     tmp = p.with_suffix(".jsonl.tmp")  # write-then-rename: a crash never truncates the capture
     tmp.write_text(("\n".join(out) + "\n") if out else "", encoding="utf-8")
     tmp.replace(p)
-    return touched
+
+
+APPLY_SYS = (
+    "You maintain the plain-language GLOSSARY of a research project's report. You get CONFUSION "
+    "feedback items (a reader didn't understand something) and the list of existing glossary "
+    "terms. For EACH item, produce the glossary entries that would have prevented that confusion. "
+    "Output STRICT JSON: [{\"i\": 1, \"terms\": [{\"term\": \"…\", \"plain\": \"…\", \"why\": "
+    "\"…\"}]}] — plain = one jargon-free sentence a newcomer gets; why = why it matters in THIS "
+    "project; terms only for concepts genuinely missing from the existing glossary (an item may "
+    "get an empty terms list). No prose outside the JSON.")
+
+
+def apply(name):
+    """Auto-apply the SAFE fixes: each unresolved 'confusion' item becomes new glossary entries
+    (purely additive), and the item is marked resolved (resolution: auto-glossary) — but ONLY
+    when at least one term was actually added for it; otherwise it stays pending for the agent.
+    Corrections and readability need judgment and are never auto-resolved (the compass carries
+    them). Returns (items_resolved, terms_added)."""
+    prov = os.environ.get("TRAINLINT_REPORT_LLM", "codex").strip().lower()
+    if prov in ("", "none", "off", "0", "false", "template"):
+        return (0, 0)
+    p = _feedback_path(name)
+    todo = [r for r in _rows(p) if r.get("kind") == "confusion" and not r.get("resolved")]
+    if not todo:
+        return (0, 0)
+    gpath = paths.wfile(f"glossary.{name}.jsonl")
+    have = {str(e.get("term") or "").lower() for e in _rows(gpath)} - {""}
+    try:
+        import viz  # lazy — same cycle-avoidance as _classify
+        user = ("Existing glossary terms: " + (", ".join(sorted(have)) or "(none)")
+                + "\n\nConfusion items:\n"
+                + "\n".join(f"{i + 1}. {_item_text(str(r.get('src') or ''), str(r.get('quote') or ''), str(r.get('note') or ''))}"
+                            + (f"  [insight: {r['insight']}]" if r.get("insight") else "")
+                            for i, r in enumerate(todo)))
+        raw = viz._llm(prov, APPLY_SYS, user)
+        rows = json.loads(raw[raw.find("["):raw.rfind("]") + 1])
+    except Exception:
+        return (0, 0)
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    added, resolved, updated = 0, 0, {}
+    with gpath.open("a", encoding="utf-8") as f:
+        for row in rows if isinstance(rows, list) else []:
+            if not isinstance(row, dict):
+                continue
+            idx = _as_idx(row.get("i"))
+            if idx is None or not (0 <= idx < len(todo)):
+                continue
+            names = []
+            for t in row.get("terms") or []:
+                if not isinstance(t, dict):
+                    continue
+                term = str(t.get("term") or "").strip()
+                plain = str(t.get("plain") or "").strip()
+                if not term or not plain or term.lower() in have:
+                    continue
+                f.write(json.dumps({"term": term, "plain": plain,
+                                    "why": str(t.get("why") or "").strip()},
+                                   ensure_ascii=False) + "\n")
+                have.add(term.lower())
+                names.append(term)
+                added += 1
+            if names:  # resolve ONLY what we actually fixed
+                r = todo[idx]
+                r.update({"resolved": True, "resolution": "auto-glossary: " + ", ".join(names),
+                          "resolved_at": now})
+                updated[(r.get("src"), r.get("key"))] = r
+                resolved += 1
+    if updated:
+        _merge(p, updated, [])
+    return (resolved, added)
 
 
 def summary(name):

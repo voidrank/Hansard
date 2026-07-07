@@ -891,6 +891,35 @@ ANNOT_JS = r"""
   }
   function unwrap(m){var p=m.parentNode;while(m.firstChild)p.insertBefore(m.firstChild,m);p.removeChild(m);p.normalize();}
 
+  // --- auto-sync: file the notes + chat Q&A back to the report server, so the machine can pull
+  // and digest them with zero clicks. Only fires when served over http(s); a page that has no
+  // /api/feedback (file://, plain loopback) just fails silently and keeps everything local. ---
+  var lastSync='',synced=false,syncTimer=null,fbDead=false;
+  function fbPayload(){  // the SYNC KEY — deterministic (no timestamp), so an unchanged report is
+    var faq={};try{var m=JSON.parse(lsGet('trainlint_mem_'+proj))||{};faq=m.faq||{}}catch(e){}
+    var anns=load();  // byte-identical between the on-load baseline and the dirty-check — no spam
+    if(!anns.length&&!Object.keys(faq).length) return null;
+    return JSON.stringify({project:proj,annotations:anns,faq:faq});
+  }
+  function fbSync(){
+    if(fbDead||location.protocol.indexOf('http')!==0||!window.fetch) return;
+    var body=fbPayload(); if(!body||body===lastSync) return;
+    try{
+      fetch('/api/feedback?project='+encodeURIComponent(proj),
+            {method:'POST',headers:{'content-type':'application/json'},body:body,credentials:'same-origin'})
+        .then(function(r){return r.text().then(function(t){
+          // a worker WITHOUT this route (or not signed in) answers 200 login-page HTML or 401 —
+          // only the real endpoint's exact ack counts, else ☁ would lie until the next deploy;
+          // a non-ack disables further tries this page-load so we don't re-POST every 20s forever
+          if(r.ok&&t.indexOf('feedback stored')===0){lastSync=body;synced=true;refreshCount();}
+          else{fbDead=true;}
+        });})
+        .catch(function(){fbDead=true;});
+    }catch(e){fbDead=true;}
+  }
+  function scheduleSync(){fbDead=false;clearTimeout(syncTimer);syncTimer=setTimeout(fbSync,1500);}
+  setInterval(function(){if(!fbDead)scheduleSync();},20000); // chat Q&A lands outside this file
+
   var btn=document.createElement('button');btn.className='ann-btn';btn.textContent='🖍 Comment';btn.style.display='none';document.body.appendChild(btn);
   var pop=document.createElement('div');pop.className='ann-pop';pop.style.display='none';document.body.appendChild(pop);
   var pending=null;
@@ -946,7 +975,7 @@ ANNOT_JS = r"""
       pop.querySelector('.ann-del').onclick=function(){
         save(load().filter(function(a){return a.id!==existing.id}));
         document.querySelectorAll('mark[data-ann="'+existing.id+'"]').forEach(unwrap);
-        hideUi();refreshCount();
+        hideUi();refreshCount();scheduleSync();
       };
     }
     pop.querySelector('.ann-save').onclick=function(){
@@ -954,7 +983,7 @@ ANNOT_JS = r"""
       if(existing){
         var anns=load();
         for(var i=0;i<anns.length;i++)if(anns[i].id===existing.id)anns[i].comment=c;
-        save(anns);hideUi();refreshCount();return;
+        save(anns);hideUi();refreshCount();scheduleSync();return;
       }
       var text=collect().text;
       var id='a'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
@@ -967,7 +996,7 @@ ANNOT_JS = r"""
       if(m1&&m1.closest){var sc=m1.closest('.rsec');a.sec=sc?sc.id:'';}
       var anns2=load();anns2.push(a);save(anns2);
       try{window.getSelection().removeAllRanges()}catch(e){}
-      pending=null;hideUi();refreshCount();
+      pending=null;hideUi();refreshCount();scheduleSync();
     };
   }
 
@@ -985,7 +1014,7 @@ ANNOT_JS = r"""
     var bar=document.querySelector('.tl-bar');
     if(!bar){bar=document.createElement('div');bar.className='tl-bar';document.body.appendChild(bar);}
     var b=document.createElement('button');bar.insertBefore(b,bar.firstChild);
-    refreshCount=function(){b.textContent='🖍 Notes ('+load().length+')';};
+    refreshCount=function(){b.textContent='🖍 Notes ('+load().length+')'+(synced?' ☁':'');};
     refreshCount();
     b.onclick=function(){
       var anns=load();
@@ -1018,6 +1047,7 @@ ANNOT_JS = r"""
     try{var pos=anchor(anns[i]);if(pos)wrapOffsets(pos.s,pos.e,anns[i].id);}catch(e){}
   }
   try{drawer();}catch(e){}
+  lastSync=fbPayload()||'';
 })();
 """
 
@@ -2244,12 +2274,42 @@ def generate(name):
 
 def absorb(name, blob_path):
     """Fold an exported `viz-memory.<name>.json` (what the in-browser chatbots captured) back
-    into the substrate, then regenerate. Glossary terms append to glossary.<name>.jsonl — the
-    SAME file /trainlint:plan drills — so a concept the operator kept asking about becomes
-    drillable; the raw Q&A appends to clarify.<name>.jsonl, which viz renders as an FAQ under
-    each decision. Dedupe so re-absorbing the same export is a no-op."""
+    into the substrate, digest + auto-apply the feedback, then regenerate. Dedupe throughout so
+    re-absorbing the same export is a no-op."""
     import json as _json
     blob = _json.loads(Path(blob_path).read_text(encoding="utf-8"))
+    added, cadded, madded, aadded = _fold_blob(name, blob)
+    fsum = _digest_and_apply(name)
+    htmlpath, _slides, _ = generate(name)
+    print(f"absorbed {added} glossary term(s) + {cadded} FAQ entr(y/ies) + {madded} mastered "
+          f"decision(s) + {aadded} highlight note(s)"
+          + (f"\nfeedback digest: {fsum}" if fsum else "")
+          + f"\nregenerated HTML: {htmlpath}")
+
+
+def _digest_and_apply(name):
+    """Classify the new feedback, then auto-apply the safe fixes (confusion -> glossary).
+    Fail-open but never silent. Returns (summary, changed) — changed=True when this run digested
+    a new item or applied a fix, so the caller can skip a pointless codex-narrative regen."""
+    try:
+        import feedback as _fb
+        touched = _fb.digest(name)
+        resolved, terms = _fb.apply(name)
+        fsum = _fb.summary(name)
+        if terms:
+            fsum += f"; auto-applied: {terms} glossary term(s) for {resolved} confusion item(s)"
+        return fsum, bool(touched or terms)
+    except Exception as _fe:  # a broken digest must leave a trace
+        print(f"[feedback] digest skipped: {_fe}", file=sys.stderr)
+        return "", False
+
+
+def _fold_blob(name, blob):
+    """Fold one exported memory blob into the substrate files. Glossary terms append to
+    glossary.<name>.jsonl — the SAME file /trainlint:plan drills — so a concept the operator
+    kept asking about becomes drillable; the raw Q&A appends to clarify.<name>.jsonl, which viz
+    renders as an FAQ under each decision. Returns (glossary, faq, mastered, notes) counts."""
+    import json as _json
 
     gpath = paths.wfile(f"glossary.{name}.jsonl")
     have = {e.get("term", "").lower() for e in (tree._load_jsonl(gpath) if gpath.exists() else [])}
@@ -2316,29 +2376,79 @@ def absorb(name, blob_path):
                 ahave.add((aid, note))
                 aadded += 1
 
-    # DIGEST the feedback: classify every new note/question into confusion / correction /
-    # readability with an insight + action each (feedback.<name>.jsonl) — that's what makes the
-    # capture usable: glossary fixes, plan re-examination, report improvements. Fail-open.
-    fsum = ""
-    try:
-        import feedback as _fb
-        _fb.digest(name)
-        fsum = _fb.summary(name)
-    except Exception as _fe:  # fail-open but NEVER silent — a broken digest must leave a trace
-        print(f"[absorb] feedback digest skipped: {_fe}", file=sys.stderr)
+    return added, cadded, madded, aadded
 
-    htmlpath, _slides, _ = generate(name)
-    print(f"absorbed {added} glossary term(s) + {cadded} FAQ entr(y/ies) + {madded} mastered "
-          f"decision(s) + {aadded} highlight note(s) into {gpath.name} + {cpath.name} + "
-          f"{apath.name} + plan-progress"
-          + (f"\nfeedback digest: {fsum}" if fsum else "")
-          + f"\nregenerated HTML: {htmlpath}")
+
+def digest_feedback(default_name=None):
+    """THE one command behind “digest feedback”: pull the operator feedback the report pages
+    filed on the server (zero clicks browser-side — the pages auto-sync), fold every blob into
+    its project's substrate, classify it (confusion/correction/readability), auto-apply the safe
+    fixes (confusion -> glossary), re-render + re-upload the touched reports, and only then
+    delete the consumed blobs server-side. Corrections stay pending in the compass — a human
+    'this is wrong' needs judgment, not automation."""
+    import re as _re
+    try:
+        import push
+        pulled = push.pull_feedback()
+    except Exception:
+        pulled = []
+    # The blob body is UNTRUSTED (server-stored, filed by whoever viewed the report). Its project
+    # field drives local file paths, so validate it EXACTLY like the worker validates the URL param
+    # — a strict allowlist — before it ever reaches paths.wfile / generate. Anything else is junk.
+    def _safe_proj(v):
+        v = str(v or "").strip()
+        return v if _re.fullmatch(r"[A-Za-z0-9._-]{1,128}", v) else ""
+
+    # default_name is TRUSTED (CLI arg / active project); blob project fields are UNTRUSTED.
+    by = {}
+    for key, blob in pulled:
+        if not isinstance(blob, dict):  # valid-JSON non-dict (list/str/num) must not crash the run
+            print(f"[digest] non-dict blob skipped: {key}", file=sys.stderr)
+            continue
+        proj = _safe_proj(blob.get("project")) or (default_name or "")
+        if not proj:
+            print(f"[digest] blob with bad/no project skipped: {key}", file=sys.stderr)
+            continue
+        by.setdefault(proj, []).append((key, blob))
+    if default_name:
+        by.setdefault(default_name, [])  # digest whatever landed locally for the named project too
+    if not by:
+        print("no pending feedback (server queue empty; no project named)")
+        return
+    for proj, blobs in sorted(by.items()):
+        counts = [0, 0, 0, 0]
+        consumed = []  # only blobs whose fold SUCCEEDED — a failed fold is retried next run
+        for key, blob in blobs:
+            try:
+                c = _fold_blob(proj, blob)
+                counts = [a + b for a, b in zip(counts, c)]
+                consumed.append(key)
+            except Exception as e:
+                print(f"[digest] {proj}: bad blob kept for retry: {e}", file=sys.stderr)
+        fsum, changed = _digest_and_apply(proj)
+        if not consumed and not changed:
+            continue  # nothing folded, nothing digested/applied -> skip the codex regen entirely
+        try:
+            htmlpath, _s, _d = generate(proj)  # re-render + re-upload; one project's failure
+        except Exception as e:                 # must not abort the rest of the batch
+            print(f"[digest] {proj}: regenerate failed, blobs kept: {e}", file=sys.stderr)
+            continue
+        for key in consumed:  # consume ONLY after fold + regen both succeeded
+            try:
+                import push
+                push.delete_feedback(key)
+            except Exception:
+                pass
+        print(f"{proj}: {len(consumed)}/{len(blobs)} blob(s) -> +{counts[0]} glossary, "
+              f"+{counts[1]} FAQ, +{counts[3]} note(s)"
+              + (f"; {fsum}" if fsum else "") + f"\n  -> {htmlpath}")
 
 
 def main():
     """One project, one self-contained HTML report. The argument is the project name (default
-    = active project). `--absorb <blob.json>` instead folds an exported memory blob into the
-    substrate and regenerates."""
+    = active project). `--absorb <blob.json>` folds an exported memory blob into the substrate
+    and regenerates. `--digest` pulls the feedback the report pages auto-synced to the server,
+    absorbs + classifies + auto-applies it, and re-renders every touched project."""
     args = sys.argv[1:]
     name_args = [a for a in args if not a.startswith("-")]
     blob = None
@@ -2349,6 +2459,13 @@ def main():
             sys.exit("usage: viz.py [project] --absorb <viz-memory.json>")
         # the project name is any non-flag arg that isn't the blob path
         name_args = [a for a in name_args if a != blob]
+    if "--digest" in args:
+        try:
+            nm = tree._active(name_args[0] if name_args else None)
+        except Exception:
+            nm = name_args[0] if name_args else None
+        digest_feedback(nm)
+        return
     name = tree._active(name_args[0] if name_args else None)
     if blob:
         absorb(name, blob)

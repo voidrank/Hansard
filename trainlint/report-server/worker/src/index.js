@@ -58,6 +58,79 @@ export default {
       return text(`stored ${project}.${kind}`, 200);
     }
 
+    // ---- feedback round-trip -----------------------------------------------------------------------
+    // The report page POSTs the operator's margin notes / chat Q&A back here; the plugin machine
+    // GETs them down (then DELETEs the consumed keys), absorbs, digests and re-renders.
+    //
+    // WRITE auth = the VIEWER'S OWN verified credential ONLY (Access JWT or the signed trainlint
+    // cookie). Feedback is filed under the VIEWER's namespace — the same ns their own machine
+    // pulls — so the primary loop (you view your own report, leave notes, your machine picks them
+    // up) works, while nobody can write into a tenant they can't authenticate as. We deliberately
+    // do NOT accept a raw ns= capability: for email/paired tenants ns = sha256(public email), so a
+    // ?ns= write is forgeable by anyone who knows the email. No credential -> no write.
+    // Pull/Delete auth = the machine's Bearer upload token, scoped to that token's own namespace.
+    const FB_MAX = 200; // hard cap on pending blobs per tenant — bounds R2 growth + digest cost
+    if (path === "/api/feedback" && request.method === "POST") {
+      const bodyText = await request.text();
+      if (!bodyText || bodyText.length > 512_000) return text("empty or oversized feedback", 400);
+      let fbNs = null;
+      const fbWho = await verifyAccessJwt(request, env);
+      if (fbWho) fbNs = await nsForEmail(fbWho.email);
+      if (!fbNs) {
+        const cookieToken = getCookie(request, "trainlint_token");
+        if (cookieToken) {
+          const id = await verifyToken(cookieToken, env);
+          if (id) fbNs = id.ns;
+        }
+      }
+      if (!fbNs) return text("sign in to leave feedback", 401);
+      const project = url.searchParams.get("project") || "";
+      if (!SAFE_NAME.test(project)) return text("bad project name", 400);
+      // count-cap: one cheap list, reject once the tenant's queue is full (drains on next digest)
+      const existing = await env.REPORTS.list({ prefix: `${fbNs}/_feedback/` });
+      if ((existing.objects || []).length >= FB_MAX) return text("feedback queue full", 429);
+      const stamp = `${Date.now()}.${crypto.randomUUID().slice(0, 8)}`;
+      await env.REPORTS.put(`${fbNs}/_feedback/${project}.${stamp}.json`, bodyText,
+        { httpMetadata: { contentType: "application/json" } });
+      return text("feedback stored", 200);
+    }
+
+    if (path === "/api/feedback" && (request.method === "GET" || request.method === "DELETE")) {
+      const auth = request.headers.get("Authorization") || "";
+      const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+      const ident = await verifyToken(token, env);
+      if (!ident) return text("invalid or missing token", 401);
+      // Serve the token's OWN namespace, and — for a raw local token — also the sha256-derived
+      // anon namespace (a page viewed before pairing filed under anon). A signed token has no raw
+      // preimage, so it only gets its user ns (matches how push.py's default raw token is set).
+      const nss = new Set([ident.ns]);
+      if (/^[a-f0-9]{32}$/i.test(token)) {
+        const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token.trim()));
+        nss.add([...new Uint8Array(d)].map((b) => b.toString(16).padStart(2, "0")).join("").slice(0, 32));
+      }
+      if (request.method === "DELETE") {
+        const key = url.searchParams.get("key") || "";
+        const okPrefix = [...nss].some((n) => key.startsWith(`${n}/_feedback/`));
+        if (!okPrefix) return text("bad key", 400);
+        await env.REPORTS.delete(key);
+        return text("deleted", 200);
+      }
+      // Cap total R2 gets to stay well under the Workers subrequest limit even with 2 namespaces:
+      // a bounded page drains over successive digests instead of 500-ing on a large queue.
+      const GET_BUDGET = 40;
+      const out = [];
+      for (const n of nss) {
+        if (out.length >= GET_BUDGET) break;
+        const listed = await env.REPORTS.list({ prefix: `${n}/_feedback/` });
+        for (const o of listed.objects) {
+          if (out.length >= GET_BUDGET) break;
+          const obj = await env.REPORTS.get(o.key);
+          if (obj) out.push({ key: o.key, blob: await obj.text() });
+        }
+      }
+      return new Response(JSON.stringify(out), { headers: { "content-type": "application/json" } });
+    }
+
     // ---- Browser read auth -----------------------------------------------------------------------
     // Attempt 1: Cloudflare Access JWT (best practice if Zero Trust is active)
     let who = await verifyAccessJwt(request, env);

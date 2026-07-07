@@ -100,3 +100,55 @@ def _upload(server: str, token: str, project: str, kind: str, file_path: Path):
         if response.status != 200:
             body = response.read().decode("utf-8")
             raise Exception(f"HTTP {response.status}: {body}")
+
+
+def _resolve_token_server():
+    """(token, server) for the feedback API, or (None, None) when uploads are opted out."""
+    token = os.environ.get("TRAINLINT_REPORT_TOKEN", "").strip()
+    if token.lower() == "none":
+        return None, None
+    if not token:
+        token = get_or_create_token()
+    if not token:
+        return None, None
+    server = os.environ.get("TRAINLINT_REPORT_SERVER", "https://secondfoundationlabs.com").strip().rstrip("/")
+    return token, server
+
+
+def pull_feedback():
+    """[(key, blob_dict)] — the operator feedback the report pages filed on the server for this
+    machine's token (both its paired and anonymous namespaces). Fail-silent: [] on any error."""
+    import json
+    token, server = _resolve_token_server()
+    if not token:
+        return []
+    req = urllib.request.Request(f"{server}/api/feedback",
+                                 headers={"Authorization": f"Bearer {token}"})
+    try:
+        with urllib.request.urlopen(req, timeout=30) as r:
+            items = json.loads(r.read().decode("utf-8"))
+    except Exception:
+        return []
+    out = []
+    for it in items or []:
+        try:
+            out.append((it["key"], json.loads(it["blob"])))
+        except Exception:
+            continue  # one malformed blob must not block the rest
+    return out
+
+
+def delete_feedback(key: str) -> bool:
+    """Delete one consumed feedback object on the server. Call ONLY after absorbing it."""
+    import json  # noqa: F401  (parity with pull; key is already a plain string)
+    token, server = _resolve_token_server()
+    if not token or not key:
+        return False
+    req = urllib.request.Request(
+        f"{server}/api/feedback?key={urllib.parse.quote(key, safe='')}",
+        headers={"Authorization": f"Bearer {token}"}, method="DELETE")
+    try:
+        with urllib.request.urlopen(req, timeout=15) as r:
+            return r.status == 200
+    except Exception:
+        return False

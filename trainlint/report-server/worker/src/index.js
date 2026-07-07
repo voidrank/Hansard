@@ -150,6 +150,37 @@ export default {
       }
       return new Response(JSON.stringify(out), { headers: { "content-type": "application/json" } });
     }
+
+    // ---- deregister: a machine removes its OWN stale _agents registry records ---------------------
+    // After a token pairs to an email, the pre-pairing anonymous registry records — _agents/<sha(token)>
+    // and the nsForEmail(anonymous-…) shadow some pairing flows minted — are permanently orphaned:
+    // nothing re-registers them, so they sit in the admin dashboard as dead operators until the stale
+    // prune. Auth = the machine's own Bearer upload token, and the deletable set is derived ONLY from
+    // that token (its current ns, the raw token's sha ns, and that sha ns's anon-email shadow), so a
+    // caller can never name an arbitrary tenant's ns. Without ?ns=, deletes the orphan set (everything
+    // derivable EXCEPT the active ns — the live record just re-registers on the next hello anyway).
+    if (path === "/api/deregister" && request.method === "POST") {
+      const auth = request.headers.get("Authorization") || "";
+      const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+      const ident = await verifyToken(token, env);
+      if (!ident) return text("invalid or missing token", 401);
+      const own = new Set([ident.ns]);
+      if (/^[a-f0-9]{32}$/i.test(token)) {
+        const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token.trim()));
+        const shaNs = [...new Uint8Array(d)].map((b) => b.toString(16).padStart(2, "0")).join("").slice(0, 32);
+        own.add(shaNs);
+        own.add(await nsForEmail(`anonymous-${shaNs.slice(0, 8)}@trainlint.local`));
+      }
+      const target = url.searchParams.get("ns") || "";
+      if (target && !own.has(target)) return text("ns not yours", 403);
+      const targets = target ? [target] : [...own].filter((n) => n !== ident.ns);
+      let deleted = 0;
+      for (const n of targets) {
+        if (await env.REPORTS.get(`_agents/${n}`)) { await env.REPORTS.delete(`_agents/${n}`); deleted++; }
+      }
+      return text(`deregistered ${deleted} record(s)`, 200);
+    }
+
     // ---- live relay: agent dial-in ----------------------------------------------------------------
     // The operator's local box connects OUT with its upload token (Authorization header, or ?token=
     // for WS clients that cannot set headers). We verify the token, then hand the upgrade to that

@@ -44,6 +44,35 @@ def _disabled():
     return os.environ.get("TRAINLINT_SERVE", "1").strip().lower() in ("0", "off", "false", "no")
 
 
+def _relay_disabled():
+    return os.environ.get("TRAINLINT_RELAY", "1").strip().lower() in ("0", "off", "false", "no")
+
+
+def _relay_running():
+    try:
+        return subprocess.run(["pgrep", "-f", "relay_agent.py run"],
+                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0
+    except Exception:
+        return False
+
+
+def ensure_relay():
+    """Ensure the outbound relay agent (relay_agent.py) runs — it dials the report worker so
+    authenticated viewers reach this box's live backend. Silent + idempotent; TRAINLINT_RELAY=0
+    disables. Never raises."""
+    if _relay_disabled():
+        return
+    try:
+        if not _relay_running():
+            _ra = str(Path(__file__).resolve().parent / "relay_agent.py")
+            subprocess.Popen(
+                [sys.executable, _ra, "run"],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                start_new_session=True)  # detached — survives this process
+    except Exception:
+        pass
+
+
 def ensure(viz_dir):
     """Ensure a loopback server serves `viz_dir`; return the base URL (or '' on failure). Silent +
     idempotent — a no-op if something already answers on the port. This is the ONLY spawn point;
@@ -58,6 +87,7 @@ def ensure(viz_dir):
                  "--directory", str(viz_dir)],
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                 start_new_session=True)  # detached — survives this process
+        ensure_relay()
         return f"http://{HOST}:{port}"
     except Exception:
         return ""

@@ -4,6 +4,7 @@
 name = "trainlint-report-server"
 main = "src/index.js"
 compatibility_date = "2024-11-01"
+workers_dev = false
 
 # R2 bucket that stores every tenant's reports, keyed <namespace>/<project>.html
 # Create it once:  wrangler r2 bucket create trainlint-reports
@@ -22,6 +23,18 @@ custom_domain = true
 [vars]
 ACCESS_AUD = "REPLACE_WITH_ACCESS_APP_AUD_TAG"
 ACCESS_TEAM_DOMAIN = "REPLACE_WITH_TEAM.cloudflareaccess.com"
+# Admin allow-list (comma-separated, lowercased). Admins may open any /<email>/<project>.html and
+# see every registered operator in the dashboard.
+ADMIN_EMAILS = "voidrank@gmail.com,cz@2ndf.ai"
 
 # SECRET (never commit): the HMAC key that signs upload tokens.
 #   openssl rand -hex 32 | wrangler secret put TOKEN_SIGNING_KEY
+
+# Durable Object: one AgentHub per namespace holds the live relay WebSocket to that operator's box.
+[[durable_objects.bindings]]
+name = "AGENTS"
+class_name = "AgentHub"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["AgentHub"]

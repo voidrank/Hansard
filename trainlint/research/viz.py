@@ -422,19 +422,23 @@ body{margin:0;background:var(--bg);color:var(--ink);
   font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,sans-serif;line-height:1.45}
 .wrap{max-width:1120px;margin:0 auto;padding:22px}
 /* --- section nav: the report body is TABBED — a sticky bar switches which section is on screen,
-   so a reader lands on one view at a time instead of one endless scroll. Print shows everything. --- */
-.rnav{position:sticky;top:0;z-index:60;display:flex;gap:7px;overflow-x:auto;scrollbar-width:none;
+   so a reader lands on one view at a time instead of one endless scroll. Print shows everything.
+   PROGRESSIVE: hiding is gated on html.js, which only NAV_JS sets — in a JS-stripped viewer
+   (phone inline preview, sanitizing proxies) no script runs, the class never lands, and every
+   section renders stacked instead of the whole body going blank. --- */
+.rnav{position:sticky;top:0;z-index:60;display:none;gap:7px;overflow-x:auto;scrollbar-width:none;
   background:rgba(241,245,249,.93);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
   padding:10px 2px 9px;margin:14px -2px 4px;border-bottom:1px solid var(--line)}
+html.js .rnav{display:flex}  /* the tab bar is dead weight without its JS — show only when live */
 .rnav::-webkit-scrollbar{display:none}
 .rnav button{flex:0 0 auto;border:1px solid var(--line);background:#fff;color:#334155;border-radius:20px;
   padding:5px 13px;font-size:12.5px;font-weight:600;cursor:pointer;white-space:nowrap;transition:background .15s}
 .rnav button:hover{background:#eef2f7}
 .rnav button.on{background:#0f172a;color:#fff;border-color:#0f172a}
-.rsec{display:none}
-.rsec.on{display:block;animation:rsec-in .18s ease}
+html.js .rsec{display:none}
+html.js .rsec.on{display:block;animation:rsec-in .18s ease}
 @keyframes rsec-in{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
-@media print{.rnav{display:none}.rsec{display:block}}
+@media print{.rnav{display:none}.rsec{display:block!important}}
 .hdr{background:linear-gradient(135deg,#0f172a,#1e293b);color:#e2e8f0;border-radius:16px;padding:22px 26px}
 .hdr h1{margin:0 0 2px;font-size:22px}
 .hdr .sub{color:#94a3b8;font-size:13px;margin-bottom:14px}
@@ -539,8 +543,11 @@ details.dec>summary::-webkit-details-marker{display:none}
 .anch-tag.warn{color:#92400e;background:#fef3c7}
 .anch-tag.miss{color:#b91c1c;background:#fee2e2}
 .anch-red{color:#b91c1c}
-.anccap{font-size:11px;color:#334155;margin-bottom:4px}
+.anccap{font-size:11px;color:#334155;margin-bottom:4px;line-height:1.9}
 .anccap code{background:#f1f5f9;border-radius:4px;padding:0 4px;font-size:10.5px}
+.anclink{display:inline-block;margin-left:8px;font-size:11px;font-weight:700;color:#fff;
+  background:#2563eb;border-radius:14px;padding:2px 10px;text-decoration:none;white-space:nowrap}
+.anclink:hover{background:#1d4ed8}
 .anccode{max-height:340px;overflow:auto}
 .anccmd{font-size:10.5px;color:#94a3b8;margin-top:3px}
 .anccmd code{user-select:all;background:#f8fafc;border-radius:4px;padding:0 4px}
@@ -642,9 +649,15 @@ CHAT_CSS = """
 .tl-in textarea{flex:1;border:1px solid #cbd5e1;border-radius:8px;padding:6px 8px;font:inherit;font-size:13px;resize:vertical;min-height:36px}
 .tl-in button{border:0;background:#4f46e5;color:#fff;border-radius:8px;padding:0 14px;font-weight:600;cursor:pointer}
 .tl-in button:disabled{background:#a5b4fc}
-.tl-bar{position:fixed;right:14px;bottom:14px;display:flex;gap:8px;z-index:50}
+.tl-bar{position:fixed;right:14px;bottom:14px;display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px;z-index:50;max-width:calc(100vw - 28px)}
 .tl-bar button{border:1px solid #cbd5e1;background:#fff;border-radius:9px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;box-shadow:0 2px 8px rgba(15,23,42,.12)}
 .tl-bar button:hover{background:#f8fafc}
+.tl-bar .tl-digest{background:#4f46e5;color:#fff;border-color:#4338ca}
+.tl-bar .tl-digest:hover{background:#4338ca}
+.tl-bar .tl-digest:disabled{opacity:.6;cursor:default}
+.tl-digbox{position:fixed;right:14px;bottom:58px;z-index:60;max-width:min(360px,92vw);background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:10px 13px;font-size:12.5px;line-height:1.45;color:#0f172a;box-shadow:0 8px 24px rgba(15,23,42,.18)}
+.tl-digbox a{color:#4f46e5;font-weight:700}
+@media print{.tl-bar,.tl-digbox{display:none}}
 """
 
 # Plain string (NOT an f-string) — the JS keeps its own braces/backticks. It reads the
@@ -841,6 +854,7 @@ QUIZ_CSS = """
 # "📖 now readable" pointing into the tree) flips to the target's tab before the browser jumps.
 NAV_JS = r"""
 (function(){
+  document.documentElement.classList.add('js');  // gates ALL tab-hiding CSS: no JS -> no hiding
   var secs=[].slice.call(document.querySelectorAll('.rsec'));
   if(!secs.length) return;
   var btns=[].slice.call(document.querySelectorAll('.rnav button'));
@@ -896,10 +910,6 @@ mark.tl-hl{background:#fde68a;color:#1f2937;border-bottom:2px solid #f59e0b;bord
 .ann-item:hover{background:#f8fafc}
 .ann-iq{color:#92400e;font-size:12px}
 .ann-orph{color:#b91c1c;font-size:11px;font-weight:700}
-.ann-digest{background:#eef2ff;color:#3730a3;border:1px solid #c7d2fe!important}
-.ann-digest:disabled{opacity:.55;cursor:default}
-.ann-dst{margin-top:7px;font-size:12px;color:#475569;min-height:15px}
-.ann-dst a{color:#4f46e5;font-weight:700}
 @media print{.ann-btn,.ann-pop{display:none}}
 """
 
@@ -1212,18 +1222,19 @@ ANNOT_JS = r"""
   // notes/Ask-AI into the substrate, classify, auto-apply, re-render + re-upload — and poll
   // digest/status until it lands. Relative URLs ride whatever prefix the page is served under
   // (/r/<ns>/, /<email>/, flat, loopback) exactly like the chat + edit endpoints do. ---
-  // Single-instance across drawer open/close: the drawer rebuilds its innerHTML every open, so a
-  // captured button/status node goes stale (a running poll would update a DETACHED element while the
-  // fresh drawer shows nothing). So: keep NO node refs — look them up live on every write — and gate
-  // on a closure flag (digestBusy), not the button's .disabled (which resets on rebuild). digMsgHtml
-  // is the last progress line so a reopened drawer can restore it.
-  var digestBusy=false,digMsgHtml='';
-  function _dn(){return pop.querySelector('.ann-dst');}   // live status node (or null if drawer closed)
-  function _db(){return pop.querySelector('.ann-digest');} // live button node
-  function setDst(html){digMsgHtml=html;var n=_dn();if(n)n.innerHTML=html;}
-  function setDb(label,disabled){var n=_db();if(n){n.textContent=label;n.disabled=!!disabled;}}
-  function digestRestore(){var n=_dn();if(n&&digMsgHtml)n.innerHTML=digMsgHtml;if(digestBusy)setDb('🤖 working…',true);}
-  function endDigest(html){digestBusy=false;setDst(html);setDb('🤖 Deal with all requests',false);}
+  // The button lives PERMANENTLY on the toolbar (digBtn, set in drawer()) — NOT inside the notes
+  // popup, which only opens when there are notes, so a user with zero notes could never reach it.
+  // Status shows in a floating box (digBox) just above the toolbar. Both are stable nodes, so no
+  // stale-lookup dance; digestBusy gates re-entry.
+  var digestBusy=false,digMsgHtml='',digBtn=null,digBox=null;
+  var DIG_LABEL='🤖 Deal with all requests';
+  function _digBox(){
+    if(!digBox){digBox=document.createElement('div');digBox.className='tl-digbox';digBox.style.display='none';document.body.appendChild(digBox);}
+    return digBox;
+  }
+  function setDst(html){digMsgHtml=html;var n=_digBox();if(html){n.innerHTML=html;n.style.display='block';}else{n.style.display='none';}}
+  function setDb(label,disabled){if(digBtn){digBtn.textContent=label;digBtn.disabled=!!disabled;}}
+  function endDigest(html){digestBusy=false;setDst(html);setDb(DIG_LABEL,false);}
   function pollDigest(n){
     if(!digestBusy)return;  // superseded (page reset) — stop the loop
     if(n>120){digestBusy=false;setDst('still running — reload the page later to see the updates.');return;}
@@ -1246,7 +1257,7 @@ ANNOT_JS = r"""
     },5000);
   }
   function runDigest(){
-    if(digestBusy){digestRestore();return;}  // one loop only; reopening just re-shows progress
+    if(digestBusy)return;  // one loop only; the button is disabled while busy anyway
     digestBusy=true;setDb('🤖 working…',true);setDst('⇪ syncing your feedback to the server…');
     fbDead=false;
     var flush=null;try{flush=fbSync();}catch(e){}
@@ -1262,15 +1273,15 @@ ANNOT_JS = r"""
     }).then(function(r){return r.text().then(function(t){return {ok:r.ok,status:r.status,text:t};});})
     .then(function(r){
       var j=null;try{j=JSON.parse(r.text)}catch(e){}
-      if(r.status===403){digestBusy=false;setDb('🤖 Deal with all requests',false);
+      if(r.status===403){digestBusy=false;setDb(DIG_LABEL,false);
         setDst('owner-only — sign in as the report owner to run this.');return;}
-      if(r.status===503){digestBusy=false;setDb('🤖 Deal with all requests',false);
+      if(r.status===503){digestBusy=false;setDb(DIG_LABEL,false);
         setDst('operator machine is offline — your feedback is safely queued and will be digested on its next run.');return;}
-      if(!r.ok||!j||!j.ok){digestBusy=false;setDb('🤖 Deal with all requests',false);
+      if(!r.ok||!j||!j.ok){digestBusy=false;setDb(DIG_LABEL,false);
         setDst('✗ '+esc(String((j&&j.error)||('error '+r.status))));return;}
       setDst(j.already?'🤖 a digest is already running — watching it…':'🤖 digest started…');
       pollDigest(0);
-    }).catch(function(e){digestBusy=false;setDb('🤖 Deal with all requests',false);
+    }).catch(function(e){digestBusy=false;setDb(DIG_LABEL,false);
       setDst('✗ unreachable ('+esc(e&&e.message?e.message:'network')+') — your feedback stays queued.');});
   }
 
@@ -1281,6 +1292,12 @@ ANNOT_JS = r"""
     var b=document.createElement('button');bar.insertBefore(b,bar.firstChild);
     refreshCount=function(){b.textContent='🖍 Notes ('+load().length+')'+(synced?' ☁':'');};
     refreshCount();
+    // the digest button lives on the toolbar itself (always visible, independent of whether there
+    // are notes) — right after 🖍 Notes. This IS the "one button" that digests all queued feedback.
+    digBtn=document.createElement('button');digBtn.type='button';digBtn.className='tl-digest';
+    digBtn.textContent=DIG_LABEL;digBtn.onclick=runDigest;
+    bar.insertBefore(digBtn,b.nextSibling);
+    if(digestBusy){setDb('🤖 working…',true);}  // survive a toolbar rebuild mid-run
     b.onclick=function(){
       var anns=load();
       if(!anns.length){alert('No notes yet — select any text in the report, then click 🖍 Comment.');return;}
@@ -1288,13 +1305,10 @@ ANNOT_JS = r"""
         var live=document.querySelector('mark[data-ann="'+a.id+'"]');
         return '<div class="ann-item" data-ann="'+a.id+'">'+(live?'':'<span class="ann-orph">⚠ text changed</span> ')+
           '<span class="ann-iq">“'+esc(a.quote.slice(0,70))+(a.quote.length>70?'…':'')+'”</span><br>'+esc(a.comment)+'</div>';
-      }).join('')+'</div><div class="ann-row"><button class="ann-digest">🤖 Deal with all requests</button>'+
-        '<button class="ann-x">Close</button></div><div class="ann-dst"></div>';
+      }).join('')+'</div><div class="ann-row"><button class="ann-x">Close</button></div>';
       place(pop,{left:window.innerWidth-360,width:0,bottom:Math.max(window.innerHeight-420,60)});
       pop.style.display='block';
       pop.querySelector('.ann-x').onclick=hideUi;
-      pop.querySelector('.ann-digest').onclick=runDigest;
-      digestRestore();  // if a digest is mid-run, show its live progress in this freshly-built drawer
       pop.querySelectorAll('.ann-item').forEach(function(it){
         it.onclick=function(){
           var id=it.getAttribute('data-ann');
@@ -1923,7 +1937,13 @@ def render_html(name, goal, bar, pl, nodes, knowledge, kinds, id2phase, phase_or
 
     H = ['<!doctype html><html lang="en"><head><meta charset="utf-8">',
          '<meta name="viewport" content="width=device-width,initial-scale=1">',
-         f"<title>{_e(name)} — research tree</title><style>{CSS}{CHAT_CSS}{QUIZ_CSS}{ANNOT_CSS}{EDIT_CSS}</style></head><body><div class='wrap'>"]
+         f"<title>{_e(name)} — research tree</title><style>{CSS}{CHAT_CSS}{QUIZ_CSS}{ANNOT_CSS}{EDIT_CSS}</style>"
+         # JS-STRIPPED viewers (phone inline preview, some sandboxes) never run NAV_JS, and the
+         # tabbed sections default to display:none — without this fallback the whole report body
+         # renders BLANK there. No JS -> hide the dead tab bar, lay every section out in flow
+         # (same shape the print stylesheet uses).
+         "<noscript><style>.rnav{display:none}.rsec{display:block}</style></noscript>"
+         "</head><body><div class='wrap'>"]
 
     # ---- header / TLDR ----
     H.append("<div class='hdr'>")
@@ -2159,9 +2179,13 @@ def render_html(name, goal, bar, pl, nodes, knowledge, kinds, id2phase, phase_or
                            if a.get("cmd") else "")
                     code_html = (f"<pre class='excode anccode'>{_e(a['code'])}</pre>"
                                  if a.get("code") else "")
+                    # the click-through: open EXACTLY these lines at EXACTLY this commit on the
+                    # repo's web UI — the "take me to the code" button this whole feature is for
+                    link = (f"<a class='anclink' href='{_e(a['href'])}' target='_blank' "
+                            f"rel='noopener'>open this code ↗</a>" if a.get("href") else "")
                     arows.append(f"<div class='exitem'>"
-                                 f"<div class='anccap'><code>{_e(a['loc'])}</code>"
-                                 f" · {_e(a['cap'])}{note}</div>{code_html}{dif_html}{cmd}</div>")
+                                 f"<div class='anccap'><code>{_e(a['loc'])}</code>{link}"
+                                 f"<br>{_e(a['cap'])}{note}</div>{code_html}{dif_html}{cmd}</div>")
                 anc_html = (f"<details class='draw' open><summary>⛓ the code behind this decision "
                             f"({len(anc)})</summary><div class='dex'>{''.join(arows)}</div></details>")
             elif _built:
@@ -2510,9 +2534,29 @@ def _numbered(rows, start):
     return "\n".join(out)
 
 
+def _repo_web(root, cache):
+    """The repo's browseable web URL (from remote.origin.url), '' if none. Turns
+    git@host:owner/repo.git and https://host/owner/repo.git into https://host/owner/repo —
+    enough for GitHub-style /blob/<sha>/<path>#Lx-Ly permalinks. Cached per root."""
+    key = "web::" + root
+    if key not in cache:
+        rc, url = _git_out(root, "config", "--get", "remote.origin.url")
+        url, web = url.strip(), ""
+        if rc == 0 and url:
+            m = re.match(r"^[\w.-]+@([\w.-]+):(.+?)(?:\.git)?/?$", url)
+            if m:
+                web = f"https://{m.group(1)}/{m.group(2)}"
+            elif url.startswith(("http://", "https://")):
+                web = re.sub(r"\.git/?$", "", url)
+        cache[key] = web
+    return cache[key]
+
+
 def _resolve_one_anchor(s, home, roots):
-    """One anchor spec -> {loc, kind, cap, code, diff, cmd}. kind: pinned | drifted | fileonly |
-    unreachable | commit | missing. Everything degrades to a caption; nothing raises."""
+    """One anchor spec -> {loc, kind, cap, code, diff, cmd, href}. kind: pinned | drifted |
+    fileonly | unreachable | commit | missing. href = commit-pinned web permalink (GitHub-style,
+    line-highlighted) when the repo has a remote — the CLICK-THROUGH into the code; '' otherwise.
+    Everything degrades to a caption; nothing raises."""
     note = s.get("note", "")
     base = s.get("repo") or home or os.getcwd()
     if base not in roots:
@@ -2527,11 +2571,13 @@ def _resolve_one_anchor(s, home, roots):
                             "--date=short", sha)
         if rc != 0:
             return {"loc": f"commit {sha}", "kind": "missing", "cap": "commit not found in "
-                    + root, "code": "", "diff": "", "cmd": "", "note": note}
+                    + root, "code": "", "diff": "", "cmd": "", "href": "", "note": note}
         _, stat = _git_out(root, "show", "--stat", "--format=", sha)
+        web = _repo_web(root, roots)
         return {"loc": f"commit {sha}", "kind": "commit", "cap": head.strip(),
                 "code": stat.strip()[:_ANCH_MAX_BYTES], "diff": "",
-                "cmd": f"git -C {root} show {sha}", "note": note}
+                "cmd": f"git -C {root} show {sha}",
+                "href": f"{web}/commit/{sha}" if web else "", "note": note}
 
     f, lines, sha = s.get("file", ""), s.get("lines"), s.get("commit", "")
     loc = f + (f":{lines[0]}-{lines[1]}" if lines else "") + (f"@{sha}" if sha else "")
@@ -2546,27 +2592,32 @@ def _resolve_one_anchor(s, home, roots):
     if not sha:  # file-only anchor (non-git dir, or not committed when recorded)
         if not working:
             return {"loc": loc, "kind": "missing", "cap": f"file not found: {fs_path}",
-                    "code": "", "diff": "", "cmd": "", "note": note}
+                    "code": "", "diff": "", "cmd": "", "href": "", "note": note}
         rows, lo, clipped = _slice(working, lines)
         cap = "file-only (no commit pin) — showing the current working copy" \
               + (" · clipped" if clipped else "")
         return {"loc": loc, "kind": "fileonly", "cap": cap, "code": _numbered(rows, lo),
                 "diff": "", "cmd": f"sed -n '{lines[0]},{lines[1]}p' {fs_path}" if lines else str(fs_path),
-                "note": note}
+                "href": "", "note": note}
 
     rel = f if not os.path.isabs(f) else os.path.relpath(f, root)
+    # the CLICK-THROUGH: a commit-pinned, line-highlighted permalink into the repo's web UI —
+    # exactly the reviewed lines, immune to later pushes (sha-addressed, not branch-addressed).
+    web = _repo_web(root, roots)
+    frag = f"#L{lines[0]}-L{lines[1]}" if lines else ""
+    href = f"{web}/blob/{sha}/{rel}{frag}" if web else ""
     rc, pinned = _git_out(root, "show", f"{sha}:{rel}")
     if rc != 0:  # pin unreachable (history rewritten, wrong repo…) -> working copy, loudly captioned
         if not working:
             return {"loc": loc, "kind": "missing",
                     "cap": f"anchor commit {sha} unreachable AND no working copy at {fs_path}",
-                    "code": "", "diff": "", "cmd": "", "note": note}
+                    "code": "", "diff": "", "cmd": "", "href": "", "note": note}
         rows, lo, clipped = _slice(working, lines)
         return {"loc": loc, "kind": "unreachable",
                 "cap": f"⚠ anchor commit {sha} unreachable — showing CURRENT working copy instead"
                        + (" · clipped" if clipped else ""),
                 "code": _numbered(rows, lo), "diff": "",
-                "cmd": f"git -C {root} show {sha}:{rel}", "note": note}
+                "cmd": f"git -C {root} show {sha}:{rel}", "href": href, "note": note}
 
     rows, lo, clipped = _slice(pinned, lines)
     code = _numbered(rows, lo)
@@ -2578,11 +2629,11 @@ def _resolve_one_anchor(s, home, roots):
         return {"loc": loc, "kind": "drifted",
                 "cap": f"pinned at {sha}" + (" · clipped" if clipped else "")
                        + " · ⚠ these lines have CHANGED since — pinned version shown, diff below",
-                "code": code, "diff": dif, "cmd": cmd, "note": note}
+                "code": code, "diff": dif, "cmd": cmd, "href": href, "note": note}
     cap = f"pinned at {sha} · unchanged in working tree" if working else \
           f"pinned at {sha} · (file gone from working tree)"
     return {"loc": loc, "kind": "pinned", "cap": cap + (" · clipped" if clipped else ""),
-            "code": code, "diff": "", "cmd": cmd, "note": note}
+            "code": code, "diff": "", "cmd": cmd, "href": href, "note": note}
 
 
 def _resolve_anchors(pl, name):

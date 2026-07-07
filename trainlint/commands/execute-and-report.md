@@ -77,6 +77,13 @@ When the move produces a result, close the loop — don't leave the plan stale:
   (built) and moves built-of-decided off zero — so an honest "we decided 8 things and built 0" can't
   hide. If the move only measured/read/reasoned (no durable output), leave `artifact` unset: it's
   decided-on-paper, and that's exactly what the next run must turn into something.
+- **The moment you record an `artifact`, ANCHOR the code behind it — one command:**
+  `python3 "${CLAUDE_PLUGIN_ROOT}/research/anchor.py" <project> <decision-id> <file>:<start>-<end>`
+  (repeatable; or `--commit <sha>` for a whole commit). An `artifact` proves something exists; an
+  anchor pins WHICH lines at WHICH commit, and the report bakes that exact snippet into the decision's
+  card — so a reviewer (even on a phone) sees the real code, not a claim. The command stamps the
+  commit itself and refuses pins git can't serve, so just point it at the code you wrote. A built
+  decision with no anchor renders a red `✗ no code to review` badge and bounces the report gate.
 - **If this move NARROWED scope**, add `"scope_drop": ["<phrase removed>", ...]` to the decision so
   the goal↔scope checker catches a `goal.txt` DONE line still advertising what you just dropped.
 - **Append ONE dated milestone line to `research/log.<name>.jsonl` for what you just DID** — this is

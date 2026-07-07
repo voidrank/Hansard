@@ -6,6 +6,10 @@
 # optional: "artifact": path/glob (or {"path":..}/{"glob":..}) the choice PRODUCES — a decision is
 #   BUILT only once status>=decided AND its artifact exists on disk. "decided" alone = chosen on paper;
 #   without an artifact it is NOT built (shown ✎, not ●). Name it when you make the thing.
+# optional: "anchors": the REVIEWABLE code behind a built decision — "file:start-end@commit"
+#   (record with research/anchor.py, which stamps+verifies the commit), {"commit":"<sha>"} for a
+#   whole commit, or "paper" for a genuinely prose-only decision. The report bakes the pinned
+#   snippet into the decision's card; a BUILT decision without anchors shows "✗ no code to review".
 # optional: "scope_drop": ["phrase", ..] — scope this choice REMOVED. goalcheck flags any such phrase
 #   still present in goal.<name>.txt (the "goal still claims multi-track, but we went text-only" scar).
 {"id": "data-storage", "phase": "data", "decision": "Which storage do training workers read data from?", "choice": "minio (full-flash); never jfs", "principle": "verify-data-before-blaming-algorithm", "why": "jfs corrupts under concurrent reads -> garbage wav -> NaN -> backward illegal-mem that looks like a model bug", "status": "verified", "match": "/jfs/|/mnt/jfs|minio|data.?root|data.?dir|storage"}

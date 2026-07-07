@@ -90,6 +90,124 @@ def artifact_exists(node, base=None):
     return False
 
 
+# --- anchors: the REVIEWABLE evidence behind a built decision ---------------------------------
+# `artifact` proves something exists; an ANCHOR pins the exact code a reviewer should read:
+# a file + line range + the commit it was reviewed at. Report cards bake the anchored snippet in,
+# so "what code is this decision?" is answerable off-machine. Record them with research/anchor.py.
+#
+# Accepted forms (string, dict, or a list of either):
+#   "src/auth.js:36-53@01139f6"     file:start-end@commit  (lines and @commit each optional)
+#   {"file": "src/auth.js", "lines": [36, 53], "commit": "01139f6", "repo": "/path", "note": "..."}
+#   {"commit": "280d440"}           a whole commit as the evidence
+#   "paper"                         explicit claim: this decision is prose-only, no code to review
+#     (distinct from MISSING — "paper" is an answer, absence is a gap the report gate flags)
+
+_ANCHOR_SHA_RE = re.compile(r"^[0-9a-fA-F]{6,40}$")
+_ANCHOR_LINES_RE = re.compile(r"^(\d+)(?:-(\d+))?$")
+
+
+def _anchor_file_ok(f):
+    """A plausible FILE PATH, not prose: no whitespace, contains a '/' or an extension dot, and
+    doesn't start with '-' (a leading dash would read as a git OPTION at render time — the specs
+    feed `git show` argv, so this is the injection guard, enforced at the parse layer for every
+    consumer). Junk like "see the PR" must NOT satisfy the anchor gate."""
+    return (bool(f) and not re.search(r"\s", f) and not f.startswith("-")
+            and ("/" in f or "." in f))
+
+
+def _parse_anchor_string(s):
+    """"file[:a[-b]][@sha]" -> spec dict, parsed from the END (rsplit) so paths containing '@' or
+    ':' survive: a trailing @suffix only counts as a commit when it's 6-40 hex chars, a trailing
+    :suffix only as lines when it's digits[-digits]. Returns None for junk."""
+    sha = None
+    body, _, tail = s.rpartition("@")
+    if body and _ANCHOR_SHA_RE.match(tail):
+        sha = tail
+    else:
+        body = s
+    lines = None
+    f, _, tail = body.rpartition(":")
+    m = _ANCHOR_LINES_RE.match(tail) if f else None
+    if m:
+        lo, hi = int(m.group(1)), int(m.group(2) or m.group(1))
+        lines = [min(lo, hi), max(lo, hi)]
+    else:
+        f = body
+    if not _anchor_file_ok(f):
+        return None
+    d = {"file": f}
+    if lines:
+        d["lines"] = lines
+    if sha:
+        d["commit"] = sha
+    return d
+
+
+def _anchor_specs(node):
+    """Normalized anchor dicts a decision declares ({file?, lines?, commit?, repo?, note?}), or the
+    sentinel [{"paper": True}]. Same shape-tolerance and fail-open stance as _artifact_specs:
+    accepts a string, a dict, or a list of either; garbage entries are dropped, never raised.
+    VALIDATION IS HERE, once, for every consumer (gate, compass, badge, render): commits must be
+    hex (they land in `git show` argv — see _anchor_file_ok for the injection guard), files must
+    look like paths."""
+    a = node.get("anchors", node.get("anchor"))
+    if not a:
+        return []
+    out = []
+
+    def _add(x):
+        if isinstance(x, str):
+            s = x.strip()
+            if not s:
+                return
+            if s.lower() == "paper":
+                out.append({"paper": True})
+                return
+            d = _parse_anchor_string(s)
+            if d:
+                out.append(d)
+        elif isinstance(x, dict):
+            if x.get("paper"):
+                out.append({"paper": True})
+                return
+            d = {}
+            if isinstance(x.get("file"), str) and _anchor_file_ok(x["file"].strip()):
+                d["file"] = x["file"].strip()
+            ln = x.get("lines")
+            if (isinstance(ln, (list, tuple)) and len(ln) == 2
+                    and all(isinstance(v, int) for v in ln)):
+                d["lines"] = [min(ln), max(ln)]
+            # dict-form commit gets the SAME hex check as the string form — an arbitrary string
+            # here would reach `git show <commit>` as a positional arg (option injection).
+            if isinstance(x.get("commit"), str) and _ANCHOR_SHA_RE.match(x["commit"].strip()):
+                d["commit"] = x["commit"].strip()
+            for k in ("repo", "note"):
+                if isinstance(x.get(k), str) and x[k].strip():
+                    d[k] = x[k].strip()
+            if d.get("file") or d.get("commit"):
+                out.append(d)
+
+    if isinstance(a, list):
+        for x in a:
+            _add(x)
+    else:
+        _add(a)
+    return out
+
+
+def has_anchor(node):
+    """True iff the decision carries at least one CODE anchor (file or commit). The "paper"
+    sentinel does NOT count: a built decision (artifact on disk) claiming "paper" is still
+    unanchored — there IS code, it just wasn't pinned for review."""
+    return any(not s.get("paper") for s in _anchor_specs(node))
+
+
+def anchor_is_paper(node):
+    """True iff the decision explicitly declares itself prose-only (anchors: "paper")."""
+    specs = _anchor_specs(node)
+    return bool(specs) and all(s.get("paper") for s in specs)
+
+
 def built(plan=None, name=None, base=None):
     """Decisions that actually PRODUCED something — status decided/verified AND a declared artifact
     that exists. The missing lens the whole workflow lacked: `decided` only means 'chosen on paper',

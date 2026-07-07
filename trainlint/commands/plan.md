@@ -110,6 +110,11 @@ Present this full picture to me FIRST and let me correct it.
    built`) and paint a decided-but-artifact-less decision `✎` (paper), not `●` (built). So when a
    decision's choice is the kind that should PRODUCE something (a script, a dataset, a config), give
    it an `"artifact"` now (even before it exists) so "is it built yet?" is a fact on disk, not a vibe.
+   Once code actually lands, also pin the reviewable lines with ONE command —
+   `python3 "${CLAUDE_PLUGIN_ROOT}/research/anchor.py" <project> <id> <file>:<start>-<end>` — which
+   writes an `"anchors"` entry (file:lines@commit, verified against git); the report bakes that exact
+   snippet into the decision's card so a reviewer sees the code itself. A decision that is genuinely
+   prose-only can declare `"anchors": "paper"`; a BUILT decision cannot (there IS code — pin it).
    If a choice NARROWS the project's scope, also add `"scope_drop": ["<phrase removed>", ...]` — the
    goal↔scope checker flags any dropped phrase still present in `goal.<name>.txt`, so the north star
    can't keep advertising a target a decision already abandoned (the multi-track→text-only scar).

@@ -374,6 +374,39 @@ def _plan_plain_gaps():
     return gaps
 
 
+def _plan_anchor_gaps():
+    """Gate G data: (new_gaps, legacy_gaps) — BUILT decisions that pin NO reviewable code (no
+    `anchors`, no explicit `anchors:"paper"` claim; and "paper" never satisfies a BUILT decision —
+    there IS code, it just wasn't pinned). File-only anchors DO satisfy: never demand SHAs git
+    can't mint (non-git dirs). LEGACY GRACE: everything already built-unanchored the first time
+    this gate sees a project is grandfathered into .state/anchorseen.<name>.json — those surface
+    as the report's ✗ badge + backfill stub, never as a bounce; only decisions that BECOME built
+    after that snapshot hard-bounce. Fail-open."""
+    try:
+        active = paths.active_project()
+        if not active or not hasattr(planlib, "has_anchor"):
+            return [], []
+        # base=project_home: hooks run from whatever cwd the session happens to be in, and the
+        # grandfather snapshot below is written ONCE — a first run from a foreign directory must
+        # not bake a wrong (relative-artifact-invisible) legacy list forever.
+        home = paths.project_home(active) or None
+        cur = [d.get("id") for d in planlib.load()
+               if d.get("id")
+               and d.get("status") in ("decided", "verified")
+               and planlib.artifact_exists(d, home)
+               and not planlib.has_anchor(d)]  # note: "paper" is NOT exempt here — an artifact
+        #      on disk means there IS code; "paper" only excuses genuinely artifact-less decisions
+        #      (which the artifact_exists filter already skips).
+        snap = paths.state_dir() / f"anchorseen.{active}.json"
+        if not snap.exists():
+            snap.write_text(json.dumps({"legacy": sorted(cur)}), encoding="utf-8")
+            return [], cur
+        legacy = set(json.loads(snap.read_text(encoding="utf-8")).get("legacy", []))
+        return [i for i in cur if i not in legacy], [i for i in cur if i in legacy]
+    except Exception:
+        return [], []
+
+
 def check(data):
     """Stop-event report gate. Returns [] for every non-report case."""
     if data.get("hook_event_name") not in ("Stop", "SubagentStop"):
@@ -433,6 +466,18 @@ def check(data):
                           + ", ".join("`%s`" % g for g in plain_gaps)
                           + " — add a one-sentence, jargon-free summary to each so the report can lead "
                           "with the meaning before the dense rationale")
+        # G. the ANCHOR gate (an item without its code is unreviewable). A decision that was BUILT
+        # this session must pin the exact code it produced — file:lines@commit — so the report card
+        # can bake the snippet in and a reviewer sees the real code, not a claim. One command records
+        # a born-valid anchor. Pre-feature legacy decisions are grandfathered (✗ badge, no bounce);
+        # staleness/drift NEVER gates (code evolving after review shouldn't bounce reports).
+        anchor_new, _anchor_legacy = _plan_anchor_gaps()
+        if anchor_new:
+            misses.append("these decisions are BUILT but pin no code a reviewer can open: "
+                          + ", ".join("`%s`" % g for g in anchor_new)
+                          + " — run `python3 $CLAUDE_PLUGIN_ROOT/research/anchor.py <project> <id> "
+                          "<file>:<start>-<end>` on the exact code each produced (it stamps the "
+                          "commit and verifies the pin), so every report item carries its code")
         # A. the stance line  —  "<N>/<total> decided · <k> pillars · main thread → ..."
         if not re.search(r"\d+\s*/\s*\d+[^\n]{0,40}decid", text, re.I):
             misses.append("the one-line stance — `<N>/<total> decided · <k> pillars · "

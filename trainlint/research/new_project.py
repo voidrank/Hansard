@@ -73,7 +73,9 @@ def main():
     w(paths.wfile(f"plan.{name}.jsonl"),
       "# Project PLAN: the ordered DECISIONS that define this run, each tagged with the\n"
       "# transferable PRINCIPLE that governs it. Draft it with /trainlint:plan. See plan.example.jsonl.\n"
-      "# fields: id | phase | decision | choice | principle | why | status(open|decided|verified) | match(regex)\n")
+      "# fields: id | phase | decision | choice | principle | why | status(open|decided|verified) | match(regex)\n"
+      "#         + artifact (path/glob the choice produced -> BUILT) + anchors (the REVIEWABLE code:\n"
+      "#         \"file:start-end@commit\" — record with research/anchor.py; \"paper\" = prose-only)\n")
     w(paths.wfile(f"goal.{name}.txt"), "")
     # motivation.<name>.txt — the optional "why this matters" beat the viz report leads with at
     # the PLANNING stage (before any experiment). Empty stub: viz omits the beat until /plan

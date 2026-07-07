@@ -24,11 +24,13 @@ MOTIVATION (from motivation.<name>.txt) · GOAL (总分总) · MAIN THREAD · NE
 decision spine, and SUPPRESSES the timeline, search tree, and pipeline band (all empty/abstract
 at this stage). A project graduates to the mature view automatically once it logs its first event.
 """
+import difflib
 import hashlib
 import html
 import json
 import os
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -532,6 +534,20 @@ details.dec>summary::-webkit-details-marker{display:none}
 .excap{font-size:11px;color:#64748b;margin-bottom:4px}
 .excode{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;color:#0f172a;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:8px 11px;margin:0;white-space:pre;overflow-x:auto;line-height:1.55}
 .dchfull{font-size:12px;color:#475569;padding:6px 0 2px 10px;margin-top:4px;white-space:pre-wrap;border-left:2px solid #e2e8f0}
+.anch-tag{font-size:10px;font-weight:700;border-radius:6px;padding:1px 6px;margin-left:4px;white-space:nowrap}
+.anch-tag.ok{color:#166534;background:#dcfce7}
+.anch-tag.warn{color:#92400e;background:#fef3c7}
+.anch-tag.miss{color:#b91c1c;background:#fee2e2}
+.anch-red{color:#b91c1c}
+.anccap{font-size:11px;color:#334155;margin-bottom:4px}
+.anccap code{background:#f1f5f9;border-radius:4px;padding:0 4px;font-size:10.5px}
+.anccode{max-height:340px;overflow:auto}
+.anccmd{font-size:10.5px;color:#94a3b8;margin-top:3px}
+.anccmd code{user-select:all;background:#f8fafc;border-radius:4px;padding:0 4px}
+.anch-stub{font-size:11.5px;color:#b91c1c;margin:2px 0 9px 24px}
+.anch-stub code{background:#fef2f2;border-radius:4px;padding:0 4px;font-size:10.5px}
+.dfa{color:#166534;background:#f0fdf4;display:block}
+.dfr{color:#b91c1c;background:#fef2f2;display:block}
 .surprises{margin:16px 0 4px}
 .surp-title{font-size:14px;font-weight:800;color:#0f172a;margin:0 0 9px}
 .surp{border-left:4px solid #94a3b8;background:#f8fafc;border-radius:0 9px 9px 0;padding:9px 13px;margin:0 0 8px}
@@ -664,7 +680,8 @@ CHAT_JS = r"""
       '  Decision: '+dec.decision+'\n'+
       '  Chosen: '+(dec.choice||'(still open)')+'\n'+
       '  Principle: '+(dec.principle||'')+'\n'+
-      '  Why: '+(dec.why||'')+'\n\n'+
+      '  Why: '+(dec.why||'')+'\n'+
+      (dec.code?('  THE CODE BEHIND THIS DECISION (pinned for review):\n'+dec.code+'\n'):'')+'\n'+
       'PROJECT GLOSSARY:\n'+glossaryText()+globalCtx()+'\n\n'+
       'Answer clearly and concisely, grounded in this context; define jargon in plain language. '+
       'If the questions reveal concepts the user did not understand, append AT THE VERY END a fenced block exactly like:\n'+
@@ -1741,6 +1758,13 @@ def _chat_blob(name, goal, pl, glossary, clarify):
                        "principle": n.get("principle", ""), "why": n.get("why", ""),
                        "faq": clar_by.get(did, []), "terms": gloss_by.get(did, []),
                        "quiz": quizmap.get(did)}
+        # the anchored code (resolved in _load_project) grounds the decision's Ask-AI chat too,
+        # so "what does this code do?" is answerable from the card itself
+        _anc_txt = "\n\n".join(f"{a.get('loc','')}\n{a.get('code','')}"
+                               for a in (n.get("_anchors") or [])
+                               if not a.get("paper") and a.get("code"))
+        if _anc_txt:
+            decmap[did]["code"] = _anc_txt[:3000]
     # per-BLOCK grounding: {title, text} for each report section, assembled from the SAME sources
     # viz renders from — so every block's chatbot answers from its own content (block-context-blob).
     blocks = {}
@@ -1982,18 +2006,47 @@ def render_html(name, goal, bar, pl, nodes, knowledge, kinds, id2phase, phase_or
     # ---- DATA section + pipeline: what the project reads & writes, and the REAL data flow ----
     flow_sec = [data_section_html(pl), pipeline_html(name)]
 
+    # ---- anchors rollup: reviewability of the whole plan in one line (from n['_anchors'],
+    # resolved in _load_project). Red count = built decisions a reviewer can't see code for.
+    _acnt = {"pinned": 0, "drifted": 0, "broken": 0, "other": 0, "unanchored": 0}
+    _abase = paths.project_home(name) or None  # cwd-independent (digest re-render path)
+    for _n in pl:
+        _codeanc = [a for a in (_n.get("_anchors") or []) if not a.get("paper")]
+        for _a in _codeanc:
+            k = _a.get("kind")
+            _acnt["pinned" if k in ("pinned", "commit") else
+                  "drifted" if k == "drifted" else
+                  "broken" if k == "missing" else "other"] += 1
+        if (not _codeanc and _n.get("status") in ("decided", "verified")
+                and plan.artifact_exists(_n, _abase)):
+            _acnt["unanchored"] += 1
+    anch_line = ""
+    if any(_acnt.values()):
+        parts = [f"{_acnt['pinned']} pinned"]
+        if _acnt["drifted"]:
+            parts.append(f"⚠ {_acnt['drifted']} drifted")
+        if _acnt["broken"]:
+            parts.append(f"<b class='anch-red'>✗ {_acnt['broken']} broken</b>")
+        if _acnt["other"]:
+            parts.append(f"{_acnt['other']} unpinned")
+        if _acnt["unanchored"]:
+            parts.append(f"<b class='anch-red'>✗ {_acnt['unanchored']} built with NO code to review</b>")
+        anch_line = "<span><b>anchors</b> ⛓ " + " · ".join(parts) + "</span>"
+
     # ---- legend (lives with the decisions it explains) ----
     if planning:
         legend = ("<div class='legend'>"
                   "<span><b>decisions</b> ✓ verified ◐ decided+built ✎ decided on paper (not built) ○ open</span>"
                   "<span>◆ pillar — a core dimension the project always rests on</span>"
                   "<span>★ main thread — the one decision to settle next</span>"
+                  + anch_line +
                   "<span>click a decision to see its principle (or ask its chatbot)</span></div>")
     else:
         legend = ("<div class='legend'>"
                   "<span><b>spine</b> ✓ verified ◐ decided+built ✎ decided on paper (not built) ○ open</span>"
                   "<span><b>tree</b> ⚠ open problem · ✓ wall closed · ◆ tested · ↩ backtracked · ● decided · ○ idea</span>"
                   "<span><b>edges</b> ⚠ wall → 📖 paper it unlocks</span>"
+                  + anch_line +
                   "<span>click a decision to see its principle</span></div>")
 
     # ---- timeline (suppressed at planning stage — nothing has happened yet) ----
@@ -2068,25 +2121,74 @@ def render_html(name, goal, bar, pl, nodes, knowledge, kinds, id2phase, phase_or
                 # examples OPEN by default — the whole point is to SEE them, not dig two folds down
                 ex_html = (f"<details class='draw' open><summary>examples ({len(ex)})</summary>"
                            f"<div class='dex'>{''.join(rows)}</div></details>")
+            # ---- ANCHORS: the exact code this decision is reviewable against (baked at render
+            # time — see _resolve_anchors). The card gets a summary badge (⛓/⚠/✗) and an open fold
+            # with the pinned snippet(s); a BUILT decision with no anchor gets a loud red stub
+            # instead, so "nothing to review" is visible debt, not silence.
+            anc = [a for a in (n.get("_anchors") or []) if not a.get("paper")]
+            # base=project_home: viz is also spawned by the digest re-render with a foreign cwd,
+            # and a relative artifact path must not silently flip built -> unbuilt there.
+            _built = plan.artifact_exists(n, paths.project_home(name) or None)
+            _kinds = {a.get("kind") for a in anc}
+            if _kinds & {"missing"}:  # a pin pointing at nothing is broken, not green
+                anch_tag = "<span class='anch-tag miss'>✗ anchor broken</span>"
+            elif _kinds & {"drifted", "unreachable"}:
+                anch_tag = "<span class='anch-tag warn'>⚠ code drifted</span>"
+            elif anc:
+                anch_tag = "<span class='anch-tag ok'>⛓ code</span>"
+            elif _built:  # "paper" never excuses a BUILT decision: artifact on disk = there IS code
+                anch_tag = "<span class='anch-tag miss'>✗ no code to review</span>"
+            else:
+                anch_tag = ""
+            anc_html = ""
+            if anc:
+                arows = []
+                for a in anc:
+                    dif_html = ""
+                    if a.get("diff"):
+                        dlines = []
+                        for dl in a["diff"].splitlines():
+                            c = ("dfa" if dl.startswith("+") and not dl.startswith("+++") else
+                                 "dfr" if dl.startswith("-") and not dl.startswith("---") else "")
+                            dlines.append(f"<span class='{c}'>{_e(dl)}</span>" if c else _e(dl))
+                        dif_html = (f"<details class='draw'><summary>what changed since "
+                                    f"(pinned → working tree)</summary>"
+                                    f"<pre class='excode anccode'>{chr(10).join(dlines)}</pre></details>")
+                    note = f" — {_e(a['note'])}" if a.get("note") else ""
+                    cmd = (f"<div class='anccmd'>reproduce: <code>{_e(a['cmd'])}</code></div>"
+                           if a.get("cmd") else "")
+                    code_html = (f"<pre class='excode anccode'>{_e(a['code'])}</pre>"
+                                 if a.get("code") else "")
+                    arows.append(f"<div class='exitem'>"
+                                 f"<div class='anccap'><code>{_e(a['loc'])}</code>"
+                                 f" · {_e(a['cap'])}{note}</div>{code_html}{dif_html}{cmd}</div>")
+                anc_html = (f"<details class='draw' open><summary>⛓ the code behind this decision "
+                            f"({len(anc)})</summary><div class='dex'>{''.join(arows)}</div></details>")
+            elif _built:
+                anc_html = (f"<div class='anch-stub'>✗ built, but no anchor recorded — a reviewer "
+                            f"can't see WHICH code this is. Backfill: <code>python3 "
+                            f"$CLAUDE_PLUGIN_ROOT/research/anchor.py {_e(name)} {_e(n.get('id',''))} "
+                            f"&lt;file&gt;:&lt;start&gt;-&lt;end&gt;</code></div>")
             # the dense original decision text also folds away — open only if you want the full rationale
             _did = n.get("id", "")
             choice_full = _gloss(_e(n.get("choice", "")), gmap)
             choice_fold = (f"<details class='draw'><summary>full decision text</summary>"
                            f"<div class='dchfull'{_eattr('decision', 'choice', n.get('choice',''), id=_did)}>"
                            f"{choice_full}</div></details>") if choice_full else ""
-            # a decision that carries examples opens by default so its code blocks are visible on load
-            dec_open = " open" if ex else ""
+            # a decision that carries examples or anchored code opens by default so it's visible on load
+            dec_open = " open" if (ex or anc) else ""
             spine.append(f"<details class='dec'{dec_open}><summary>"
                          f"<span class='gl' style='color:{_c}'"
                          f"{_eattr('decision', 'status', st, id=_did, type='select', opts='open,decided,verified', render='glyph')}>{_g}</span>"
                          f"<span class='dsum'><span class='dq'"
                          f"{_eattr('decision', 'decision', n.get('decision',''), id=_did)}>"
-                         f"{_gloss(_e(n.get('decision','')), gmap)}</span>{new_tag}{you}{pl_tag}"
+                         f"{_gloss(_e(n.get('decision','')), gmap)}</span>{new_tag}{you}{pl_tag}{anch_tag}"
                          f"<br><span class='dch'>{plain}</span></span></summary>"
                          f"<div class='dwhy'><span class='pr'>{_e(n.get('principle',''))}</span> "
                          f"<span class='dwhyt'{_eattr('decision', 'why', n.get('why',''), id=_did)}>"
                          f"{_ec(n.get('why',''))}</span></div>"
                          f"{ex_html}"
+                         f"{anc_html}"
                          f"{choice_fold}"
                          f"<div class='tl-quiz' data-dec=\"{_e(n.get('id',''))}\"></div>"
                          f"<div class='tl-chat' data-dec=\"{_e(n.get('id',''))}\"></div></details>")
@@ -2356,11 +2458,168 @@ def stdout_summary(name, goal, bar, pl, nodes, knowledge, htmlpath):
     return "\n".join(out)
 
 
+# --- anchors: bake the REVIEWABLE code behind each decision into the report -----------------------
+# A decision's `anchors` (recorded by research/anchor.py) pin file:lines@commit. The report is a
+# static blob viewed OFF-machine (phone, R2) — nothing can be fetched at view time — so the anchored
+# snippet is resolved HERE, at render time, where git and the repo exist, and baked into the HTML.
+# Pinned truth first: `git show <commit>:<file>` is what the reviewer reviews; the working tree is
+# only consulted to DETECT drift (and as fallback when the pin is unreachable), never silently
+# substituted for the pin.
+
+_ANCH_MAX_LINES = 120          # per-snippet line cap
+_ANCH_MAX_BYTES = 8_000        # per-snippet byte cap
+_ANCH_TOTAL_BYTES = 1_500_000  # whole-report code budget (worker upload caps the blob at ~5MB)
+
+
+def _git_out(repo, *args, timeout=10):
+    """(rc, stdout) of git -C <repo> <args>; never raises (anchors must fail-open to captions)."""
+    try:
+        r = subprocess.run(["git", "-C", str(repo), *args],
+                           capture_output=True, text=True, timeout=timeout)
+        return r.returncode, r.stdout
+    except Exception:
+        return 1, ""
+
+
+def _slice(text, lines):
+    """The FULL [start,end] 1-based line slice of text (whole text when lines is falsy) — never
+    truncated here: drift detection must compare complete ranges (a change past a display cap is
+    still drift). Display truncation happens in _numbered only."""
+    rows = text.splitlines()
+    lo, hi = (lines[0], lines[1]) if lines else (1, len(rows))
+    lo = max(1, lo)
+    picked = rows[lo - 1:hi]
+    clipped = len(picked) > _ANCH_MAX_LINES  # will the DISPLAY be cut? (caption hint)
+    return picked, lo, clipped
+
+
+def _numbered(rows, start):
+    """Line-numbered display text, capped at _ANCH_MAX_LINES lines / _ANCH_MAX_BYTES bytes —
+    the caps are display-only; callers compare the uncapped rows for drift."""
+    out, size = [], 0
+    for i, ln in enumerate(rows):
+        if i >= _ANCH_MAX_LINES:
+            out.append(f"    … │ ({len(rows) - i} more lines — line cap; use the command below)")
+            break
+        s = f"{start + i:>5} │ {ln}"
+        size += len(s) + 1
+        if size > _ANCH_MAX_BYTES:
+            out.append("    … │ (snippet byte cap reached — use the command below)")
+            break
+        out.append(s)
+    return "\n".join(out)
+
+
+def _resolve_one_anchor(s, home, roots):
+    """One anchor spec -> {loc, kind, cap, code, diff, cmd}. kind: pinned | drifted | fileonly |
+    unreachable | commit | missing. Everything degrades to a caption; nothing raises."""
+    note = s.get("note", "")
+    base = s.get("repo") or home or os.getcwd()
+    if base not in roots:
+        rc, top = _git_out(base, "rev-parse", "--show-toplevel")
+        roots[base] = top.strip() if rc == 0 and top.strip() else ""
+    root = roots[base] or base
+
+    # a whole COMMIT as the evidence -> subject + --stat listing
+    if s.get("commit") and not s.get("file"):
+        sha = s["commit"]
+        rc, head = _git_out(root, "show", "--no-patch", "--format=%h %s  (%an · %ad)",
+                            "--date=short", sha)
+        if rc != 0:
+            return {"loc": f"commit {sha}", "kind": "missing", "cap": "commit not found in "
+                    + root, "code": "", "diff": "", "cmd": "", "note": note}
+        _, stat = _git_out(root, "show", "--stat", "--format=", sha)
+        return {"loc": f"commit {sha}", "kind": "commit", "cap": head.strip(),
+                "code": stat.strip()[:_ANCH_MAX_BYTES], "diff": "",
+                "cmd": f"git -C {root} show {sha}", "note": note}
+
+    f, lines, sha = s.get("file", ""), s.get("lines"), s.get("commit", "")
+    loc = f + (f":{lines[0]}-{lines[1]}" if lines else "") + (f"@{sha}" if sha else "")
+    fs_path = Path(f) if os.path.isabs(f) else Path(root) / f
+    working = ""
+    if fs_path.is_file():
+        try:
+            working = fs_path.read_text(encoding="utf-8", errors="replace")
+        except Exception:
+            working = ""
+
+    if not sha:  # file-only anchor (non-git dir, or not committed when recorded)
+        if not working:
+            return {"loc": loc, "kind": "missing", "cap": f"file not found: {fs_path}",
+                    "code": "", "diff": "", "cmd": "", "note": note}
+        rows, lo, clipped = _slice(working, lines)
+        cap = "file-only (no commit pin) — showing the current working copy" \
+              + (" · clipped" if clipped else "")
+        return {"loc": loc, "kind": "fileonly", "cap": cap, "code": _numbered(rows, lo),
+                "diff": "", "cmd": f"sed -n '{lines[0]},{lines[1]}p' {fs_path}" if lines else str(fs_path),
+                "note": note}
+
+    rel = f if not os.path.isabs(f) else os.path.relpath(f, root)
+    rc, pinned = _git_out(root, "show", f"{sha}:{rel}")
+    if rc != 0:  # pin unreachable (history rewritten, wrong repo…) -> working copy, loudly captioned
+        if not working:
+            return {"loc": loc, "kind": "missing",
+                    "cap": f"anchor commit {sha} unreachable AND no working copy at {fs_path}",
+                    "code": "", "diff": "", "cmd": "", "note": note}
+        rows, lo, clipped = _slice(working, lines)
+        return {"loc": loc, "kind": "unreachable",
+                "cap": f"⚠ anchor commit {sha} unreachable — showing CURRENT working copy instead"
+                       + (" · clipped" if clipped else ""),
+                "code": _numbered(rows, lo), "diff": "",
+                "cmd": f"git -C {root} show {sha}:{rel}", "note": note}
+
+    rows, lo, clipped = _slice(pinned, lines)
+    code = _numbered(rows, lo)
+    cmd = f"git -C {root} show {sha}:{rel}" + (f" | sed -n '{lines[0]},{lines[1]}p'" if lines else "")
+    wrows, _, _ = _slice(working, lines) if working else ([], lo, False)
+    if working and wrows != rows:  # the SAME range moved on -> pinned stays canon, diff shows drift
+        dif = "\n".join(difflib.unified_diff(rows, wrows, f"{rel}@{sha} (reviewed)",
+                                             f"{rel} (working tree now)", lineterm=""))[:_ANCH_MAX_BYTES]
+        return {"loc": loc, "kind": "drifted",
+                "cap": f"pinned at {sha}" + (" · clipped" if clipped else "")
+                       + " · ⚠ these lines have CHANGED since — pinned version shown, diff below",
+                "code": code, "diff": dif, "cmd": cmd, "note": note}
+    cap = f"pinned at {sha} · unchanged in working tree" if working else \
+          f"pinned at {sha} · (file gone from working tree)"
+    return {"loc": loc, "kind": "pinned", "cap": cap + (" · clipped" if clipped else ""),
+            "code": code, "diff": "", "cmd": cmd, "note": note}
+
+
+def _resolve_anchors(pl, name):
+    """Resolve every decision's anchors ONCE (report + slides share the pass) onto n['_anchors'],
+    respecting the global byte budget. Returns rollup counts for the header line."""
+    home = paths.project_home(name) or os.getcwd()
+    roots, spent = {}, 0
+    stats = {"pinned": 0, "drifted": 0, "fileonly": 0, "unreachable": 0, "missing": 0,
+             "commit": 0, "unanchored_built": 0}
+    for n in pl:
+        specs = plan._anchor_specs(n)
+        resolved = []
+        for s in specs:
+            if s.get("paper"):
+                resolved.append({"paper": True})
+                continue
+            r = _resolve_one_anchor(s, home, roots)
+            if spent + len(r["code"]) > _ANCH_TOTAL_BYTES:
+                r["code"], r["diff"] = "", ""
+                r["cap"] += " · snippet omitted (report code budget reached) — use the command below"
+            spent += len(r["code"]) + len(r["diff"])
+            stats[r["kind"]] = stats.get(r["kind"], 0) + 1
+            resolved.append(r)
+        n["_anchors"] = resolved
+        if (not plan.has_anchor(n)
+                and n.get("status") in ("decided", "verified")
+                and plan.artifact_exists(n, home)):  # home, not cwd: digest re-render safe
+            stats["unanchored_built"] += 1
+    return stats
+
+
 def _load_project(name):
     """Everything the renderers need for one project — all derived, no new files."""
     facts = tree.load_facts(name)
     nodes = tree.build_tree(tree.load_events(name, facts), facts)
     pl = plan.load(name)
+    _resolve_anchors(pl, name)  # bakes n['_anchors'] onto each decision (report + slides share it)
     know = tree._load_jsonl(paths.resolve(f"knowledge.{name}.jsonl"))
     glossary = tree._load_jsonl(paths.resolve(f"glossary.{name}.jsonl"))
     clarify = tree._load_jsonl(paths.resolve(f"clarify.{name}.jsonl"))

@@ -132,6 +132,21 @@ def _compass(name):
                         f"decided decisions have produced an artifact — {paper} are decided on PAPER "
                         f"only (choice typed, nothing on disk). decided≠built: until a decision "
                         f"produces something, drive it, don't count it as done")
+    if pl and hasattr(plan, "has_anchor"):
+        # reviewability, ambient: a BUILT decision that pins no code renders a red ✗ in the report
+        # ("what code IS this item?" unanswerable). One coach line, never a block — anchor.py makes
+        # recording one a single command. Drift (code moved on after pinning) is mentioned by the
+        # report itself, never nagged here.
+        _home = paths.project_home(name)  # cwd-independent: hooks run from arbitrary directories
+        unanchored = [d["id"] for d in pl
+                      if d.get("id")  # a row without an id can't be named — skip, don't crash
+                      and d.get("status") in ("decided", "verified")
+                      and plan.artifact_exists(d, _home)
+                      and not plan.has_anchor(d)]  # "paper" never excuses a BUILT decision
+        if unanchored:
+            bits.append(f"⛓ {len(unanchored)} built decision(s) pin NO reviewable code "
+                        f"({', '.join(unanchored[:4])}{'…' if len(unanchored) > 4 else ''}) — backfill: "
+                        f"python3 $CLAUDE_PLUGIN_ROOT/research/anchor.py {name} <id> <file>:<start>-<end>")
     if mt:
         bits.append("main thread (drive this, don't wander): " + mt.get("decision", ""))
     if av:

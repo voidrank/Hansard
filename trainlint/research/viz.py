@@ -27,6 +27,7 @@ at this stage). A project graduates to the mature view automatically once it log
 import hashlib
 import html
 import json
+import os
 import re
 import sys
 from pathlib import Path
@@ -1871,6 +1872,12 @@ html,body{margin:0;height:100%;background:#0b1220;color:#cbd5e1;overflow:hidden}
   padding:34px 48px;box-sizing:border-box;overflow:hidden;font-size:18px}
 .slide.active{display:flex}
 .slide.cover{justify-content:center;align-items:center;text-align:center}
+/* LLM-authored slides: a title + a few big bullets, vertically centred, generous spacing. */
+.slide .sbul{list-style:none;margin:26px 0 0;padding:0;max-width:23em;align-self:center}
+.slide .sbul li{position:relative;padding:0 0 0 30px;margin:0 0 20px;font-size:27px;line-height:1.42;color:#e2e8f0}
+.slide .sbul li:before{content:"▸";position:absolute;left:0;color:#38bdf8;font-size:24px}
+.slide .snote{margin-top:auto;padding-top:14px;font-size:14px;color:#64748b;font-style:italic;border-top:1px solid #1e293b}
+.slide h2.sec+.sbul{margin-top:34px}
 /* deck-theme-scope: the report's base .card{#fff}/.tl/.gl-* are reused verbatim and would
    render as white boxes on the dark deck. Re-skin them DARK *only* under .slide, so the report
    (render_html) keeps its light theme byte-for-byte. */
@@ -1960,49 +1967,50 @@ def render_slides(name, goal, bar, pl, nodes, knowledge, kinds, id2phase, phase_
              f"decided · {counts.get('open',0)} open  ({summ['total']} decisions)</div></div>")
     secs.append(_sec(cover, "cover"))
 
-    # 2 - story: one slide per beat (planning arc before any run, mature arc after)
-    beats = (planning_story_beats(motivation, goal, bar, pl) if planning
-             else story_beats(goal, bar, pl, nodes, rows))
-    for b in beats:
-        secs.append(_sec(_render_beats([b])))
+    # 2 - narrative middle. DEFAULT: an LLM AUTHORS a distilled, one-idea-per-slide deck from the
+    # substrate — the template used to DUMP 10k-char timeline / decision slides (unreadable). The
+    # template arc (beats + timeline + spine) is the fallback when no LLM is set or it fails.
+    _prov = os.environ.get("TRAINLINT_SLIDES_LLM",
+                           os.environ.get("TRAINLINT_REPORT_LLM", "codex")).strip().lower()
+    deck = llm_slides(name, _prov) if _prov else []
+    if deck:
+        for sl in deck:
+            secs.append(_sec(_llm_slide_html(sl)))
+    else:
+        beats = (planning_story_beats(motivation, goal, bar, pl) if planning
+                 else story_beats(goal, bar, pl, nodes, rows))
+        for b in beats:
+            secs.append(_sec(_render_beats([b])))
+        if not planning and rows:
+            tl = ["<h2 class='sec'>Timeline — how the search got here</h2><div class='card tl'>"]
+            for r in rows:
+                g, col, lbl = KIND.get(r["kind"], ("•", "#64748b", r["kind"]))
+                tl.append(f"<div class='row'><div class='date'>{_e(r['ts'])}</div>"
+                          f"<div class='mk' style='color:{col}'>{g}</div>"
+                          f"<div class='body'><span class='dir'>{_e(r['direction'])}</span> "
+                          f"<span class='knd'>{_e(lbl)}</span>"
+                          f"<div class='note'>{_e(r['note'])}</div></div></div>")
+            tl.append("</div>")
+            secs.append(_sec("".join(tl)))
+        for ph, decs in spine_groups(pl):
+            s = [f"<h2 class='sec'>Decisions — {_e(ph)}</h2><div class='card'>"]
+            for n in decs:
+                you = ("<span class='you'>← you are here</span>"
+                       if (mt and n.get("id") == mt.get("id")) else "")
+                pl_tag = "<span class='pill-tag'>◆ pillar</span>" if n.get("pillar") else ""
+                _g, _c = _dec_glyph(n)
+                s.append("<div class='dec-flat'>"
+                         f"<span class='gl' style='color:{_c}'>{_g}</span>"
+                         f"<span class='dsum'><span class='dq'>{_gloss(_e(n.get('decision','')), gmap)}"
+                         f"</span>{you}{pl_tag}"
+                         f"<br><span class='dch'>→ {_gloss(_e(n.get('choice','')), gmap)}</span>"
+                         f" <span class='pr'>{_e(n.get('principle',''))}</span></span></div>")
+            s.append("</div>")
+            secs.append(_sec("".join(s)))
 
-    # 3 - pipeline (only once phases form a real processing flow)
+    # 3 - the data-flow visual (compact; useful in BOTH modes as an appendix)
     if not planning:
         secs.append(_sec("<h2 class='sec'>The data flow</h2>" + pipeline_html(name)))
-
-    # 4 - timeline
-    if not planning and rows:
-        tl = ["<h2 class='sec'>Timeline — how the search got here</h2><div class='card tl'>"]
-        for r in rows:
-            g, col, lbl = KIND.get(r["kind"], ("•", "#64748b", r["kind"]))
-            tl.append(f"<div class='row'><div class='date'>{_e(r['ts'])}</div>"
-                      f"<div class='mk' style='color:{col}'>{g}</div>"
-                      f"<div class='body'><span class='dir'>{_e(r['direction'])}</span> "
-                      f"<span class='knd'>{_e(lbl)}</span>"
-                      f"<div class='note'>{_e(r['note'])}</div></div></div>")
-        tl.append("</div>")
-        secs.append(_sec("".join(tl)))
-
-    # 5 - decision spine: one slide per phase, decisions rendered open (not collapsible)
-    for ph, decs in spine_groups(pl):
-        s = [f"<h2 class='sec'>Decisions — {_e(ph)}</h2><div class='card'>"]
-        for n in decs:
-            st = n.get("status", "open")
-            you = ("<span class='you'>← you are here</span>"
-                   if (mt and n.get("id") == mt.get("id")) else "")
-            pl_tag = "<span class='pill-tag'>◆ pillar</span>" if n.get("pillar") else ""
-            _g, _c = _dec_glyph(n)
-            s.append("<div class='dec-flat'>"
-                     f"<span class='gl' style='color:{_c}'>{_g}</span>"
-                     f"<span class='dsum'><span class='dq'>{_gloss(_e(n.get('decision','')), gmap)}"
-                     f"</span>{you}{pl_tag}"
-                     f"<br><span class='dch'>→ {_gloss(_e(n.get('choice','')), gmap)}</span>"
-                     # slide-content-altitude: the slide face shows decision + choice + a principle
-                     # tag only — the full why-paragraph (in the report) is dropped here so a dense
-                     # phase doesn't overflow; the why is destined for speaker notes (notes-source).
-                     f" <span class='pr'>{_e(n.get('principle',''))}</span></span></div>")
-        s.append("</div>")
-        secs.append(_sec("".join(s)))
 
     # 6 - search tree: SVG inlined, renders natively in the deck (no rasterization)
     if not planning and nodes:
@@ -2225,6 +2233,100 @@ def llm_narrative(name, provider):
         return _llm(provider, REPORT_SYS, "Project data (JSON):\n" + json.dumps(data, ensure_ascii=False))
     except Exception:
         return ""
+
+
+SLIDES_SYS = (
+    "You are a staff-level presenter turning a research project's substrate into a CRISP, talk-ready "
+    "slide deck. Output ONLY a JSON array of slides — no prose, no code fence. Each slide is "
+    '{"title": str, "bullets": [str, ...], "note": str}. RULES: '
+    "(1) ONE idea per slide. 2-5 bullets, each <= 14 words, punchy, plain language — never a wall of text. "
+    "(2) GROUND every claim in the provided data; NEVER invent facts, numbers, names, decisions, or events "
+    "not present. If something is unknown, leave it out. "
+    "(3) DISTILL, don't dump: merge related decisions, keep only the 3-5 that matter, translate jargon, "
+    "drop minor ones. This is a talk, not the document. "
+    "(4) Follow this arc, ~7-10 slides total: the PROBLEM (why this project exists / what's hard), the "
+    "APPROACH (how we attack it), the KEY DECISIONS distilled (what we chose and the one-line why), what "
+    "SURPRISED us (where reality broke the plan), WHERE IT STANDS now, and the SINGLE next thing. "
+    "(5) 'note' = one sentence of speaker context for that slide (optional, may be empty). "
+    "Return the JSON array and nothing else.")
+
+
+def _parse_deck(raw):
+    """Extract the JSON slide array from an LLM reply (tolerates ```json fences / stray prose)."""
+    if not raw:
+        return []
+    t = raw.strip()
+    if "```" in t:  # strip the first fenced block's fence markers
+        m = re.search(r"```(?:json)?\s*(.+?)```", t, re.S)
+        if m:
+            t = m.group(1).strip()
+    i, j = t.find("["), t.rfind("]")
+    if i < 0 or j <= i:
+        return []
+    try:
+        deck = json.loads(t[i:j + 1])
+    except Exception:
+        return []
+    out = []
+    for s in deck if isinstance(deck, list) else []:
+        if not isinstance(s, dict):
+            continue
+        title = str(s.get("title", "")).strip()
+        bullets = [str(b).strip() for b in (s.get("bullets") or []) if str(b).strip()]
+        if title or bullets:
+            out.append({"title": title, "bullets": bullets[:6], "note": str(s.get("note", "")).strip()})
+    return out
+
+
+def llm_slides(name, provider):
+    """Let the chosen LLM AUTHOR the narrative deck (distilled, one-idea-per-slide) from the same
+    substrate the report reads — replacing the old template dump. Returns [] on any failure so the
+    caller falls back to the template deck (never breaks the render)."""
+    def read(fn):
+        p = paths.resolve(fn)
+        return p.read_text(encoding="utf-8").strip() if p.exists() else ""
+
+    def jl(fn):
+        p = paths.resolve(fn)
+        out = []
+        if p.exists():
+            for x in p.read_text(encoding="utf-8").splitlines():
+                x = x.strip()
+                if x and not x.startswith("#"):
+                    try:
+                        out.append(json.loads(x))
+                    except Exception:
+                        pass
+        return out
+    try:
+        pl = plan.load(name)
+        mt = plan.main_thread(pl)
+        data = {
+            "project": name,
+            "goal": read(f"goal.{name}.txt"), "purpose": read(f"purpose.{name}.txt"),
+            "main_thread": (mt.get("plain") or mt.get("decision")) if mt else "",
+            "pillars": [p.get("id") for p in plan.pillars(pl)],
+            "decisions": [{"id": d.get("id"), "status": d.get("status"),
+                           "plain": d.get("plain") or d.get("decision"), "choice": d.get("choice"),
+                           "why": d.get("why"), "pillar": bool(d.get("pillar"))} for d in pl],
+            "surprises": jl(f"surprises.{name}.jsonl"),
+            "focus": jl(f"focus.{name}.jsonl"),
+            "recent_log": jl(f"log.{name}.jsonl")[-12:],
+        }
+        return _parse_deck(_llm(provider, SLIDES_SYS,
+                                "Project data (JSON):\n" + json.dumps(data, ensure_ascii=False)))
+    except Exception:
+        return []
+
+
+def _llm_slide_html(sl):
+    """One LLM-authored slide dict -> the inner HTML for a <section class='slide'>."""
+    title = _e(sl.get("title", "")) or "&nbsp;"
+    bullets = "".join(f"<li>{_e(b)}</li>" for b in sl.get("bullets", []))
+    inner = f"<h2 class='sec'>{title}</h2>" + (f"<ul class='sbul'>{bullets}</ul>" if bullets else "")
+    if sl.get("note"):  # speaker note: hidden on the face, visible in Print/PDF via SLIDES_CSS
+        inner += f"<div class='snote'>{_e(sl['note'])}</div>"
+    return inner
 
 
 def generate(name):

@@ -7,11 +7,19 @@
 //   GET  /             — the logged-in user's index: lists THEIR reports + shows THEIR upload token.
 //   GET  /<name>.html  — streams one of the caller's reports from R2 (404 if it isn't in their ns).
 //
+// Live relay (see relay.js): the operator's box dials wss://<host>/agent (upload-token auth) into
+// a per-namespace AgentHub Durable Object. Viewer routes (/<name>.html, /chat, /login,
+// /r/<ns>/<anything>) relay through that socket when the agent is online; POST /api/share grants a
+// customer email viewer access to the caller's namespace via an R2 _shares/<email> record.
+//
 // Access protects the GET routes. If Access is not configured (or billing blocks it), we support
 // a self-contained Password-to-Token login gate to protect GET routes. The namespace is always
 // derived server-side from a verified credential.
 
 import { verifyAccessJwt, verifyToken, mintToken, nsForEmail } from "./auth.js";
+
+// The Durable Object class must be exported from the Worker's main module for the AGENTS binding.
+export { AgentHub } from "./relay.js";
 
 const SAFE_NAME = /^[A-Za-z0-9._-]{1,128}$/; // project/file names we accept into a key
 
@@ -20,6 +28,18 @@ function html(body, status = 200, headers = {}) {
 }
 function text(body, status = 200) {
   return new Response(body, { status, headers: { "content-type": "text/plain; charset=utf-8" } });
+}
+
+// admin allow-list from env.ADMIN_EMAILS (comma-separated). Membership => may access ANY /<user>/…
+// route and sees every registered operator in the dashboard. Everything else stays ns-isolated.
+function isAdmin(email, env) {
+  if (!email) return false;
+  const list = String(env.ADMIN_EMAILS || "").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
+  return list.includes(String(email).trim().toLowerCase());
+}
+
+function htmlEscape(str) {
+  return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
 function getCookie(request, name) {
@@ -130,6 +150,92 @@ export default {
       }
       return new Response(JSON.stringify(out), { headers: { "content-type": "application/json" } });
     }
+    // ---- live relay: agent dial-in ----------------------------------------------------------------
+    // The operator's local box connects OUT with its upload token (Authorization header, or ?token=
+    // for WS clients that cannot set headers). We verify the token, then hand the upgrade to that
+    // namespace's AgentHub Durable Object. Must run before the browser ?token= magic-link handling.
+    if (path === "/agent") {
+      if ((request.headers.get("Upgrade") || "").toLowerCase() !== "websocket") {
+        return text("expected websocket upgrade", 426);
+      }
+      const auth = request.headers.get("Authorization") || "";
+      let agentToken = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+      if (!agentToken) agentToken = url.searchParams.get("token") || "";
+      const ident = await verifyToken(agentToken, env);
+      if (!ident) return text("invalid or missing upload token", 401);
+      const hub = env.AGENTS.get(env.AGENTS.idFromName(ident.ns));
+      // Pass the already-verified identity into the DO on the /connect subrequest. The DO can't
+      // re-verify the token, so it trusts index.js: email → hello/dashboard label, ns → R2 key.
+      const connectUrl = `https://agent-hub/connect?email=${encodeURIComponent(ident.email || "unknown")}&ns=${encodeURIComponent(ident.ns)}`;
+      return hub.fetch(new Request(connectUrl, request));
+    }
+
+    // ---- Google OAuth routes: handled BEFORE the who-gate so an already-authenticated user (or a
+    // callback that re-fires) never falls through to a 404. They only need env + url, not `who`. -----
+    if (path === "/auth/google") {
+      const clientId = env.GOOGLE_CLIENT_ID;
+      if (!clientId) return html(loginPage("Google OAuth is not configured (GOOGLE_CLIENT_ID missing)."), 500);
+      const state = url.searchParams.get("state") || "/";
+      const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?response_type=code` +
+        `&client_id=${encodeURIComponent(clientId)}` +
+        `&redirect_uri=${encodeURIComponent(`https://${url.host}/auth/google/callback`)}` +
+        `&scope=${encodeURIComponent("openid email")}&state=${encodeURIComponent(state)}&prompt=select_account`;
+      return new Response("", { status: 302, headers: { "Location": authUrl } });
+    }
+
+    if (path === "/auth/google/callback") {
+      const code = url.searchParams.get("code");
+      const state = url.searchParams.get("state") || "/";
+      if (!code) return html(loginPage("OAuth failed: no authorization code from Google."), 400);
+      const clientId = env.GOOGLE_CLIENT_ID, clientSecret = env.GOOGLE_CLIENT_SECRET;
+      if (!clientId || !clientSecret) return html(loginPage("Google OAuth secrets missing on server."), 500);
+      try {
+        const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
+          method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({ code, client_id: clientId, client_secret: clientSecret,
+            redirect_uri: `https://${url.host}/auth/google/callback`, grant_type: "authorization_code" }),
+        });
+        const tokenData = await tokenRes.json();
+        if (!tokenData.id_token) return html(loginPage(`Google token exchange failed: ${JSON.stringify(tokenData)}`), 400);
+        const parts = tokenData.id_token.split(".");
+        if (parts.length < 2) return html(loginPage("Malformed ID token from Google."), 400);
+        const payload = JSON.parse(atob(parts[1].replace(/-/g, "+").replace(/_/g, "/")));
+        if (!payload.email) return html(loginPage("No email in the Google account."), 400);
+        const token = await mintToken(payload.email, env);
+        const cookieValue = `trainlint_token=${encodeURIComponent(token)}; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=31536000`;
+        return new Response("", { status: 302, headers: { "Location": state, "Set-Cookie": cookieValue } });
+      } catch (e) {
+        return html(loginPage(`Google login error: ${e.message}`), 500);
+      }
+    }
+
+    // ---- share: INVITE a customer email to view MY namespace (upload-token auth) -----------------
+    // Consent-required: this writes only a PENDING invite (_pending/<email>). It does NOT grant
+    // access — the invitee must explicitly accept (GET /accept?ns=...) before the share goes live.
+    // Writing an active _shares record here would let an attacker bind their ns onto a victim's
+    // email and hijack the victim's implicit viewer routes (account takeover), so we never do.
+    if (path === "/api/share" && request.method === "POST") {
+      const auth = request.headers.get("Authorization") || "";
+      const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+      const ident = await verifyToken(token, env);
+      if (!ident) return text("invalid or missing upload token", 401);
+
+      let payload;
+      try { payload = await request.json(); } catch { return text("bad json body", 400); }
+      const email = String(payload.email || "").trim().toLowerCase();
+      if (!email || !email.includes("@") || email.length > 254) return text("bad email", 400);
+
+      const pendingKey = `_pending/${email}`;
+      let record = { ns: [] };
+      const existing = await env.REPORTS.get(pendingKey);
+      if (existing) {
+        try { record = await existing.json(); } catch { record = { ns: [] }; }
+      }
+      if (!Array.isArray(record.ns)) record.ns = [];
+      if (!record.ns.includes(ident.ns)) record.ns.push(ident.ns);
+      await env.REPORTS.put(pendingKey, JSON.stringify(record), { httpMetadata: { contentType: "application/json" } });
+      return text(`invited ${email}`, 200);
+    }
 
     // ---- Browser read auth -----------------------------------------------------------------------
     // Attempt 1: Cloudflare Access JWT (best practice if Zero Trust is active)
@@ -141,7 +247,7 @@ export default {
       if (cookieToken) {
         const ident = await verifyToken(cookieToken, env);
         if (ident) {
-          who = { email: ident.email };
+          who = { email: ident.email, ns: ident.ns };  // carry AUTHORITATIVE ns (raw tokens: sha256(token) != sha256(email))
         }
       }
     }
@@ -151,8 +257,11 @@ export default {
     if (queryToken && request.method === "GET" && path === "/link") {
       const project = url.searchParams.get("project") || "";
       
-      // 1. If not authenticated with Google yet, redirect to Google Login with state
-      if (!who) {
+      // 1. If not authenticated with a REAL (Google) identity yet, redirect to Google Login with
+      // state. An anonymous magic-link cookie (…@trainlint.local) does NOT count — pairing to it
+      // would bind the token to the anonymous ns instead of the user's Google account (the bug that
+      // left the agent stranded on a third namespace). Force a real Google login before pairing.
+      if (!who || String(who.email).endsWith("@trainlint.local")) {
         const clientId = env.GOOGLE_CLIENT_ID;
         const redirectUri = `https://${url.host}/auth/google/callback`;
         if (!clientId) {
@@ -203,7 +312,7 @@ export default {
       }
 
       // Set cookie and redirect to clean dashboard
-      const cookieValue = `trainlint_token=${encodeURIComponent(cleanToken)}; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=31536000`;
+      const cookieValue = `trainlint_token=${encodeURIComponent(cleanToken)}; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=31536000`;
       
       const htmlEscape = (str) => String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
       const safeProject = htmlEscape(project);
@@ -257,7 +366,7 @@ export default {
       if (ident) {
         const cleanUrl = new URL(request.url);
         cleanUrl.searchParams.delete("token");
-        const cookieValue = `trainlint_token=${encodeURIComponent(queryToken)}; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=31536000`;
+        const cookieValue = `trainlint_token=${encodeURIComponent(queryToken)}; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=31536000`;
         return new Response("", {
           status: 302,
           headers: {
@@ -270,86 +379,6 @@ export default {
 
     // Auth Login Gate (only if not authenticated)
     if (!who) {
-      // 1. Google OAuth Authentication Routes ------------------------------------------------------
-      if (path === "/auth/google") {
-        const clientId = env.GOOGLE_CLIENT_ID;
-        const redirectUri = `https://${url.host}/auth/google/callback`;
-        if (!clientId) {
-          return html(loginPage("Google OAuth is not configured on this host. GOOGLE_CLIENT_ID missing."), 500);
-        }
-        
-        // If state is not provided, default to redirecting to root "/"
-        const state = url.searchParams.get("state") || "/";
-        const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?` +
-          `response_type=code` +
-          `&client_id=${encodeURIComponent(clientId)}` +
-          `&redirect_uri=${encodeURIComponent(redirectUri)}` +
-          `&scope=${encodeURIComponent("openid email")}` +
-          `&state=${encodeURIComponent(state)}` +
-          `&prompt=select_account`;
-          
-        return new Response("", { status: 302, headers: { "Location": authUrl } });
-      }
-
-      if (path === "/auth/google/callback") {
-        const code = url.searchParams.get("code");
-        const state = url.searchParams.get("state") || "/";
-        if (!code) return html(loginPage("OAuth failed: authorization code not returned from Google."), 400);
-
-        const clientId = env.GOOGLE_CLIENT_ID;
-        const clientSecret = env.GOOGLE_CLIENT_SECRET;
-        const redirectUri = `https://${url.host}/auth/google/callback`;
-
-        if (!clientId || !clientSecret) {
-          return html(loginPage("Google OAuth secrets missing on server."), 500);
-        }
-
-        try {
-          // Exchange code for ID token
-          const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
-            method: "POST",
-            headers: { "Content-Type": "application/x-www-form-urlencoded" },
-            body: new URLSearchParams({
-              code,
-              client_id: clientId,
-              client_secret: clientSecret,
-              redirect_uri: redirectUri,
-              grant_type: "authorization_code"
-            })
-          });
-
-          const tokenData = await tokenRes.json();
-          if (!tokenData.id_token) {
-            return html(loginPage(`Google Token Exchange failed: ${JSON.stringify(tokenData)}`), 400);
-          }
-
-          // Decode JWT ID Token payload (unsafe client-side is fine here since it came directly from Google HTTPS)
-          const parts = tokenData.id_token.split(".");
-          if (parts.length < 2) return html(loginPage("Malformed ID token returned from Google."), 400);
-          
-          const payloadRaw = atob(parts[1].replace(/-/g, "+").replace(/_/g, "/"));
-          const payload = JSON.parse(payloadRaw);
-          const email = payload.email;
-
-          if (!email) return html(loginPage("No email address returned from Google account."), 400);
-
-          // Success: Mint trainlint token and store in cookie
-          const token = await mintToken(email, env);
-          const cookieValue = `trainlint_token=${encodeURIComponent(token)}; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=31536000`;
-          
-          // Redirect to the original path saved in state (e.g. /link?token=...)
-          return new Response("", {
-            status: 302,
-            headers: {
-              "Location": state,
-              "Set-Cookie": cookieValue
-            }
-          });
-        } catch (e) {
-          return html(loginPage(`Google Login error: ${e.message}`), 500);
-        }
-      }
-
       // Serve login page for any other route
       return html(loginPage());
     }
@@ -360,15 +389,147 @@ export default {
         status: 302,
         headers: {
           "Location": "/login",
-          "Set-Cookie": "trainlint_token=; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=0"
+          "Set-Cookie": "trainlint_token=; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=0"
         }
       });
     }
 
-    const ns = await nsForEmail(who.email);
+    const ns = who.ns || await nsForEmail(who.email);  // token path already carries the authoritative ns
+
+    // ---- accept: the invitee consents, promoting a PENDING invite into an ACTIVE share -----------
+    // Requires an authenticated viewer (who.email above). Moves ns from _pending/<who.email> into
+    // _shares/<who.email> (create/append, uniq), clears it from pending, then redirects into the
+    // now-authorized explicit-ns relay. A ns not in the caller's pending list is rejected (400).
+    if (path === "/accept" && request.method === "GET") {
+      const acceptNs = (url.searchParams.get("ns") || "").toLowerCase();
+      if (!/^[a-f0-9]{32}$/.test(acceptNs)) return text("bad ns", 400);
+      const emailKey = who.email.trim().toLowerCase();
+
+      const pendingKey = `_pending/${emailKey}`;
+      let pending = { ns: [] };
+      const pendingObj = await env.REPORTS.get(pendingKey);
+      if (pendingObj) {
+        try { pending = await pendingObj.json(); } catch { pending = { ns: [] }; }
+      }
+      if (!Array.isArray(pending.ns)) pending.ns = [];
+      if (!pending.ns.includes(acceptNs)) return text("no such pending invitation", 400);
+
+      const shareKey = `_shares/${emailKey}`;
+      let shares = { ns: [] };
+      const shareObj = await env.REPORTS.get(shareKey);
+      if (shareObj) {
+        try { shares = await shareObj.json(); } catch { shares = { ns: [] }; }
+      }
+      if (!Array.isArray(shares.ns)) shares.ns = [];
+      if (!shares.ns.includes(acceptNs)) shares.ns.push(acceptNs);
+      await env.REPORTS.put(shareKey, JSON.stringify(shares), { httpMetadata: { contentType: "application/json" } });
+
+      pending.ns = pending.ns.filter((n) => n !== acceptNs);
+      if (pending.ns.length) {
+        await env.REPORTS.put(pendingKey, JSON.stringify(pending), { httpMetadata: { contentType: "application/json" } });
+      } else {
+        await env.REPORTS.delete(pendingKey);
+      }
+
+      return new Response("", { status: 303, headers: { "Location": `/r/${acceptNs}/` } });
+    }
+
+    // ---- live relay viewer routes ------------------------------------------------------------------
+
+    // explicit-ns variant for multi-share: /r/<ns>/<anything> relays "/<anything>" to that ns's
+    // agent, after checking the share record grants who.email that namespace (own ns always allowed).
+    const rm = path.match(/^\/r\/([a-f0-9]{32})(\/.*)?$/);
+    if (rm && (request.method === "GET" || request.method === "POST")) {
+      const targetNs = rm[1];
+      const rest = (rm[2] || "/") + url.search;
+      if (targetNs !== ns && !isAdmin(who.email, env)) {
+        const granted = await grantedNamespaces(who.email, env);
+        if (!granted.includes(targetNs)) return text("not found", 404);
+      }
+      if (!(await agentConnected(targetNs, env))) return text("operator offline", 503);
+      return relayToAgent(targetNs, rest, request, env);
+    }
+
+    // ---- per-user cross-namespace route: /<email>/<project>.html and POST /<email>/(chat|login) ----
+    // <user> is a URL-encoded email → targetNs = nsForEmail(email). TWO segments only, so it never
+    // shadows the flat /<project>.html (single segment) nor the exact /chat, /login, / routes; and it
+    // sits after the /r/<ns>/ handler so that keeps priority. Access: own ns OR admin OR an accepted
+    // share for targetNs. The ns here is EXPLICIT (no single-live inference) — relay live, else R2.
+    const userRoute = path.match(/^\/([^\/]+)\/([^\/]+)$/);
+    if (userRoute) {
+      let email = "";
+      try { email = decodeURIComponent(userRoute[1]).trim().toLowerCase(); } catch { email = ""; }
+      const seg = userRoute[2];
+      const reportMatch = seg.match(/^([A-Za-z0-9._-]+)\.(?:slides\.html|html)$/);
+      const isReport = request.method === "GET" && !!reportMatch && SAFE_NAME.test(reportMatch[1]);
+      const isControl = request.method === "POST" && (seg === "chat" || seg === "login");
+      const emailOk = email.includes("@") && email.length <= 254 && !email.includes("/");
+      if (emailOk && (isReport || isControl)) {
+        const targetNs = await nsForEmail(email);
+        const allowed = targetNs === ns
+          || isAdmin(who.email, env)
+          || (await grantedNamespaces(who.email, env)).includes(targetNs);
+        if (!allowed) return text("not authorized for this user", 403);
+        const rel = `/${seg}${url.search}`;
+        if (await agentConnected(targetNs, env)) return relayToAgent(targetNs, rel, request, env);
+        if (isReport) {
+          const obj = await env.REPORTS.get(`${targetNs}/${seg}`);
+          if (obj) return new Response(obj.body, { headers: { "content-type": "text/html; charset=utf-8" } });
+          return text("no such report", 404);
+        }
+        return text("operator offline", 503);
+      }
+    }
+
+    // /chat and /login: relay live to the resolved agent (own ns if its agent is connected, else
+    // the single shared ns with a live agent). POST bodies are b64-forwarded verbatim.
+    if ((path === "/chat" || path === "/login") && (request.method === "GET" || request.method === "POST")) {
+      const liveNs = await resolveLiveNs(ns, who.email, env);
+      if (!liveNs) return text("operator offline", 503);
+      return relayToAgent(liveNs, path + url.search, request, env);
+    }
 
     // index: the caller's own reports + their upload token (onboarding = copy this token)
     if (path === "/" || path === "/index.html") {
+      // Admin dashboard: enumerate every operator from the durable R2 _agents/<ns> registry so an
+      // operator can debug any user's projects. Live vs last-seen comes from agentConnected().
+      if (isAdmin(who.email, env)) {
+        const agents = await env.REPORTS.list({ prefix: "_agents/" });
+        const cards = [];
+        for (const o of agents.objects) {
+          const recNs = o.key.slice("_agents/".length);
+          let rec = {};
+          try { const obj = await env.REPORTS.get(o.key); if (obj) rec = await obj.json(); } catch {}
+          const email = String(rec.email || "unknown");
+          const projects = Array.isArray(rec.projects) ? rec.projects : [];
+          const live = await agentConnected(recNs, env);
+          const status = live
+            ? `<span style="color:#059669;font-weight:600">🟢 live</span>`
+            : `<span style="color:#9ca3af">⚪ offline</span>`;
+          const projLinks = projects.length
+            ? projects.map((p) =>
+                `<a href="/${encodeURIComponent(email)}/${encodeURIComponent(p)}.html">${htmlEscape(p)}</a>` +
+                ` &middot; <a href="/${encodeURIComponent(email)}/${encodeURIComponent(p)}.slides.html">slides</a>`
+              ).join("<br>")
+            : "<em>no projects</em>";
+          cards.push(
+            `<li style="margin-bottom:16px"><b>${htmlEscape(email)}</b> ${status}` +
+            `<div style="color:#9ca3af;font-size:12px">ns ${htmlEscape(recNs.slice(0, 8))}…</div>` +
+            `<div style="margin-top:4px">${projLinks}</div></li>`
+          );
+        }
+        return html(
+          `<!doctype html><meta charset=utf-8><title>trainlint · admin</title>` +
+          `<style>body{font:15px/1.5 system-ui,sans-serif;max-width:760px;margin:40px auto;padding:0 16px;background:#f9fafb;color:#111827}` +
+          `a{color:#2563eb;text-decoration:none}a:hover{text-decoration:underline}ul{list-style:none;padding:0}` +
+          `.header{display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #e5e7eb;padding-bottom:12px;margin-bottom:24px}` +
+          `.btn-logout{background:#ef4444;color:#fff;padding:4px 10px;border-radius:6px;font-size:13px;font-weight:500;text-decoration:none}</style>` +
+          `<div class="header"><h1>All operators (admin)</h1><a href="/logout" class="btn-logout">Logout</a></div>` +
+          `<p>Signed in as <b>${htmlEscape(who.email)}</b> · admin view of every registered operator.</p>` +
+          `<ul>${cards.join("") || "<li><em>no operators have connected yet</em></li>"}</ul>`
+        );
+      }
+
       const listed = await env.REPORTS.list({ prefix: `${ns}/` });
       const projects = new Set();
       for (const o of listed.objects) {
@@ -385,10 +546,37 @@ export default {
         (p) => `<li><a href="/${encodeURIComponent(p)}.html">${p}</a>` +
                ` &middot; <a href="/${encodeURIComponent(p)}.slides.html">slides</a></li>`
       ).join("") || "<li><em>no reports yet — configure the plugin with your token below</em></li>";
-      
+
+      // shared namespaces with a live agent → links into the explicit-ns relay
+      const grantedList = (await grantedNamespaces(who.email, env)).filter((g) => g !== ns);
+      const sharedLinks = [];
+      for (const g of grantedList) {
+        if (await agentConnected(g, env)) {
+          sharedLinks.push(`<li><a href="/r/${g}/">operator ${g.slice(0, 8)}…</a> <span style="color:#059669;font-weight:600">&#9679; live</span></li>`);
+        }
+      }
+      const sharedSection = sharedLinks.length
+        ? `<h2 style="font-size:17px;margin-top:28px">Shared with you (live)</h2><ul>${sharedLinks.join("")}</ul>`
+        : "";
+
+      // pending invitations awaiting THIS viewer's explicit consent (from _pending/<email>)
+      let pendingNs = [];
+      const pendingObj = await env.REPORTS.get(`_pending/${who.email.trim().toLowerCase()}`);
+      if (pendingObj) {
+        try { const rec = await pendingObj.json(); if (Array.isArray(rec.ns)) pendingNs = rec.ns; } catch {}
+      }
+      const pendingSection = pendingNs.length
+        ? `<h2 style="font-size:17px;margin-top:28px">Pending invitations</h2><ul>` +
+          pendingNs.map((g) => `<li>operator ${g.slice(0, 8)}… &middot; <a href="/accept?ns=${g}">Accept</a></li>`).join("") +
+          `</ul>`
+        : "";
+
+      // SECURITY: never render the raw upload token / magic link in the dashboard HTML. A relayed
+      // cross-tenant report page runs same-origin and could fetch('/') to scrape it -> ns takeover.
+      // The token is a machine credential the plugin already holds; onboarding is the /link pairing.
       const tokenDisplay = isRawToken
-        ? `<div class=tok><b>Your Magic Link</b> — keep this secret. Use it to bookmark or open your reports from other browsers:<p><code>https://${url.host}/?token=${activeToken}</code></p></div>`
-        : `<div class=tok><b>Your upload token</b> — set it in the plugin as <code>TRAINLINT_REPORT_TOKEN</code> so your reports appear here:<p><code>${activeToken}</code></p></div>`;
+        ? `<div class=tok><b>Anonymous session.</b> To claim these reports under your Google account, run the plugin — it prints a one-click pairing link (<code>/link?token=…</code>). The token is never shown here.</div>`
+        : `<div class=tok><b>You're signed in.</b> Your local plugin already holds your upload token — reports it renders appear here automatically. The token is a machine secret and is never displayed.</div>`;
 
       return html(
         `<!doctype html><meta charset=utf-8><title>trainlint reports</title>` +
@@ -403,21 +591,95 @@ export default {
         `  <a href="/logout" class="btn-logout">Logout</a>` +
         `</div>` +
         `<p>Signed in as <b>${userDisplay}</b>.</p><ul>${links}</ul>` +
+        sharedSection +
+        pendingSection +
         tokenDisplay
       );
     }
 
-    // serve one report — scoped to the caller's namespace, 404 if it isn't theirs
+    // serve one report — relay live when an agent is resolvable (own ns first, else the single
+    // shared live ns); otherwise fall through to R2 in the caller's OWN namespace, and report the
+    // operator offline when neither source has it.
     const m = path.match(/^\/([A-Za-z0-9._-]+\.(?:slides\.html|html))$/);
     if (m && request.method === "GET") {
+      const liveNs = await resolveLiveNs(ns, who.email, env);
+      if (liveNs) return relayToAgent(liveNs, `/${m[1]}${url.search}`, request, env);
       const obj = await env.REPORTS.get(`${ns}/${m[1]}`);
-      if (!obj) return text("not found", 404);
+      if (!obj) return text("operator offline", 503);
       return new Response(obj.body, { headers: { "content-type": "text/html; charset=utf-8" } });
     }
 
     return text("not found", 404);
   },
 };
+
+// ---- live relay helpers ---------------------------------------------------------------------------
+
+function bytesToB64(bytes) {
+  let bin = "";
+  const CHUNK = 8192; // avoid call-stack limits on large bodies
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    bin += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
+  }
+  return btoa(bin);
+}
+
+// share lookup: R2 _shares/<lowercased viewer email> -> { ns: [granted namespaces] }
+async function grantedNamespaces(email, env) {
+  try {
+    const obj = await env.REPORTS.get(`_shares/${String(email).trim().toLowerCase()}`);
+    if (!obj) return [];
+    const record = await obj.json();
+    return Array.isArray(record.ns) ? record.ns : [];
+  } catch {
+    return [];
+  }
+}
+
+async function agentConnected(nsTarget, env) {
+  try {
+    const hub = env.AGENTS.get(env.AGENTS.idFromName(nsTarget));
+    const res = await hub.fetch("https://agent-hub/status");
+    if (!res.ok) return false;
+    const data = await res.json();
+    return !!data.connected;
+  } catch {
+    return false;
+  }
+}
+
+// ns resolution for implicit viewer routes: own ns if its agent is connected; else if EXACTLY ONE
+// shared ns has a live agent, use it; else null (caller falls back to R2 / "operator offline").
+async function resolveLiveNs(ownNs, email, env) {
+  if (await agentConnected(ownNs, env)) return ownNs;
+  const granted = await grantedNamespaces(email, env);
+  const live = [];
+  for (const g of granted) {
+    if (g === ownNs) continue;
+    if (await agentConnected(g, env)) live.push(g);
+  }
+  return live.length === 1 ? live[0] : null;
+}
+
+// Relay one viewer request to nsTarget's agent. Only method/path/body/content-type cross the relay
+// — hop-by-hop, cookie and authorization headers are dropped by construction (the worker already
+// authenticated the viewer; the local backend trusts x-trainlint-relay added on the agent side).
+// The agent reply's status and content-type are passed back verbatim by the AgentHub.
+async function relayToAgent(nsTarget, relPath, request, env) {
+  const method = request.method === "POST" ? "POST" : "GET";
+  let bodyB64 = null;
+  let ct = null;
+  if (method === "POST") {
+    bodyB64 = bytesToB64(new Uint8Array(await request.arrayBuffer()));
+    ct = request.headers.get("content-type") || null;
+  }
+  const hub = env.AGENTS.get(env.AGENTS.idFromName(nsTarget));
+  return hub.fetch("https://agent-hub/relay", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ method, path: relPath, body: bodyB64, ct }),
+  });
+}
 
 function loginPage(error = "") {
   return `<!doctype html><meta charset=utf-8><title>Login - trainlint reports</title>` +

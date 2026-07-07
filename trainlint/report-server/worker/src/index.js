@@ -451,7 +451,12 @@ export default {
       // back into that operator's substrate. The report page fetch('edit') resolves to /r/<ns>/edit
       // when viewed here, so gate the /edit sub-path with the same rule as the /edit routes below:
       // allowed only when this IS the caller's own ns. (Returns the 403 the editor UI expects.)
-      if ((rm[2] || "/") === "/edit" && targetNs !== ns) return text("editing is owner-only", 403);
+      // /digest (the "Deal with all requests" button) is owner-only for the same reason PLUS cost:
+      // it spawns an LLM pass on the operator's machine — a granted viewer must not spend that.
+      const rSub = rm[2] || "/";
+      if (rSub === "/edit" && targetNs !== ns) return text("editing is owner-only", 403);
+      if ((rSub === "/digest" || rSub === "/digest/status") && targetNs !== ns)
+        return text("digest is owner-only", 403);
       if (!(await agentConnected(targetNs, env))) return text("operator offline", 503);
       return relayToAgent(targetNs, rest, request, env);
     }
@@ -490,6 +495,29 @@ export default {
         if (targetNs !== ns) return text("editing is owner-only", 403);
         if (!(await agentConnected(targetNs, env))) return text("operator offline", 503);
         return relayToAgent(targetNs, `/edit${url.search}`, request, env);
+      }
+    }
+
+    // ---- "Deal with all requests": OWNER-ONLY digest trigger + status poll ----------------------
+    // Same two flat/namespaced shapes as /edit (the /r/<ns>/ variants are owner-gated above), same
+    // owner-only rule but for a different reason: POST /digest spawns an LLM pass + re-render on
+    // the operator's machine — nobody else gets to spend that. The backend answers 202 immediately
+    // and the page then polls GET /digest/status, so both fit the relay's 120s budget trivially.
+    if ((path === "/digest" && request.method === "POST")
+        || (path === "/digest/status" && request.method === "GET")) {
+      const targetNs = ns;  // flat: the target is, by construction, the caller's own ns
+      if (!(await agentConnected(targetNs, env))) return text("operator offline", 503);
+      return relayToAgent(targetNs, `${path}${url.search}`, request, env);
+    }
+    const digRoute = path.match(/^\/([^\/]+)\/digest(\/status)?$/);
+    if (digRoute && request.method === (digRoute[2] ? "GET" : "POST")) {
+      let email = "";
+      try { email = decodeURIComponent(digRoute[1]).trim().toLowerCase(); } catch { email = ""; }
+      if (email.includes("@") && email.length <= 254 && !email.includes("/")) {
+        const targetNs = await nsForEmail(email);
+        if (targetNs !== ns) return text("digest is owner-only", 403);
+        if (!(await agentConnected(targetNs, env))) return text("operator offline", 503);
+        return relayToAgent(targetNs, `/digest${digRoute[2] || ""}${url.search}`, request, env);
       }
     }
 
@@ -538,38 +566,112 @@ export default {
       // operator can debug any user's projects. Live vs last-seen comes from agentConnected().
       if (isAdmin(who.email, env)) {
         const agents = await env.REPORTS.list({ prefix: "_agents/" });
-        const cards = [];
+        const now = Date.now();
+        const STALE_MS = 14 * 24 * 60 * 60 * 1000;  // offline anonymous sessions older than this are zombies
+
+        // One registry record per ns, but the dashboard reads per HUMAN: fold every _agents/<ns> that
+        // shares an email into a single card, unioning its namespaces + projects. This is what collapses
+        // the "same anonymous name three times, same project list re-printed" clutter — that repetition
+        // is real namespace fragmentation (one person across many local-token sessions), not a styling
+        // artifact, so it has to be fixed at the data fold, not with CSS.
+        const byEmail = new Map();
         for (const o of agents.objects) {
           const recNs = o.key.slice("_agents/".length);
           let rec = {};
           try { const obj = await env.REPORTS.get(o.key); if (obj) rec = await obj.json(); } catch {}
           const email = String(rec.email || "unknown");
           const projects = Array.isArray(rec.projects) ? rec.projects : [];
-          const live = await agentConnected(recNs, env);
-          const status = live
-            ? `<span style="color:#059669;font-weight:600">🟢 live</span>`
-            : `<span style="color:#9ca3af">⚪ offline</span>`;
-          const projLinks = projects.length
-            ? projects.map((p) =>
-                `<a href="/${encodeURIComponent(email)}/${encodeURIComponent(p)}.html">${htmlEscape(p)}</a>` +
-                ` &middot; <a href="/${encodeURIComponent(email)}/${encodeURIComponent(p)}.slides.html">slides</a>`
-              ).join("<br>")
-            : "<em>no projects</em>";
-          cards.push(
-            `<li style="margin-bottom:16px"><b>${htmlEscape(email)}</b> ${status}` +
-            `<div style="color:#9ca3af;font-size:12px">ns ${htmlEscape(recNs.slice(0, 8))}…</div>` +
-            `<div style="margin-top:4px">${projLinks}</div></li>`
-          );
+          const updatedAt = Number(rec.updatedAt) || 0;
+          let g = byEmail.get(email);
+          if (!g) { g = { email, keys: [], projects: new Set(), updatedAt: 0 }; byEmail.set(email, g); }
+          g.keys.push(recNs);
+          projects.forEach((p) => g.projects.add(p));
+          if (updatedAt > g.updatedAt) g.updatedAt = updatedAt;
         }
+
+        // Live if ANY of the human's namespaces has a connected agent.
+        const groups = [];
+        for (const g of byEmail.values()) {
+          let live = false;
+          for (const n of g.keys) { if (await agentConnected(n, env)) { live = true; break; } }
+          groups.push({ ...g, projects: [...g.projects].sort(), live });
+        }
+
+        // Zombie prune (authorized cleanup): an OFFLINE, ANONYMOUS (@trainlint.local) human whose last
+        // hello is older than STALE_MS is a dead local-token session nobody will revisit — drop its
+        // records from R2 so the registry stops growing without bound. Real (Google) accounts, and any
+        // live or recent session, are never touched; a pruned session just re-registers if it reconnects.
+        // updatedAt===0 (pre-timestamp records) is treated as unknown-age and kept.
+        let pruned = 0;
+        const alive = [];
+        for (const g of groups) {
+          const zombie = !g.live && g.email.endsWith("@trainlint.local") && g.updatedAt && (now - g.updatedAt) > STALE_MS;
+          if (zombie) {
+            for (const n of g.keys) { try { await env.REPORTS.delete(`_agents/${n}`); pruned++; } catch {} }
+            continue;
+          }
+          alive.push(g);
+        }
+
+        // Live first, then most-recently seen.
+        alive.sort((a, b) => (Number(b.live) - Number(a.live)) || (b.updatedAt - a.updatedAt));
+
+        const ago = (ts) => {
+          if (!ts) return "never";
+          const s = Math.max(0, Math.round((now - ts) / 1000));
+          if (s < 90) return "just now";
+          const m = Math.round(s / 60); if (m < 90) return `${m}m ago`;
+          const h = Math.round(m / 60); if (h < 36) return `${h}h ago`;
+          return `${Math.round(h / 24)}d ago`;
+        };
+
+        const cards = alive.map((g) => {
+          const status = g.live
+            ? `<span class="badge live">● live</span>`
+            : `<span class="badge off">last seen ${ago(g.updatedAt)}</span>`;
+          const sessions = g.keys.length > 1 ? `${g.keys.length} sessions` : `ns ${htmlEscape(g.keys[0].slice(0, 8))}…`;
+          const chips = g.projects.length
+            ? g.projects.map((p) =>
+                `<span class="chip"><a href="/${encodeURIComponent(g.email)}/${encodeURIComponent(p)}.html">${htmlEscape(p)}</a>` +
+                `<a class="sl" href="/${encodeURIComponent(g.email)}/${encodeURIComponent(p)}.slides.html">slides</a></span>`
+              ).join("")
+            : `<span class="none">no projects</span>`;
+          return `<li class="card"><div class="row"><b class="who">${htmlEscape(g.email)}</b>${status}</div>` +
+                 `<div class="meta">${sessions}</div><div class="chips">${chips}</div></li>`;
+        });
+
+        const prunedNote = pruned
+          ? `<p class="note">Cleaned up ${pruned} stale anonymous session${pruned > 1 ? "s" : ""}.</p>`
+          : "";
+
         return html(
           `<!doctype html><meta charset=utf-8><title>trainlint · admin</title>` +
-          `<style>body{font:15px/1.5 system-ui,sans-serif;max-width:760px;margin:40px auto;padding:0 16px;background:#f9fafb;color:#111827}` +
-          `a{color:#2563eb;text-decoration:none}a:hover{text-decoration:underline}ul{list-style:none;padding:0}` +
-          `.header{display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #e5e7eb;padding-bottom:12px;margin-bottom:24px}` +
-          `.btn-logout{background:#ef4444;color:#fff;padding:4px 10px;border-radius:6px;font-size:13px;font-weight:500;text-decoration:none}</style>` +
-          `<div class="header"><h1>All operators (admin)</h1><a href="/logout" class="btn-logout">Logout</a></div>` +
-          `<p>Signed in as <b>${htmlEscape(who.email)}</b> · admin view of every registered operator.</p>` +
-          `<ul>${cards.join("") || "<li><em>no operators have connected yet</em></li>"}</ul>`
+          `<style>` +
+          `body{font:15px/1.5 system-ui,sans-serif;max-width:820px;margin:40px auto;padding:0 16px;background:#f9fafb;color:#111827}` +
+          `a{color:#2563eb;text-decoration:none}a:hover{text-decoration:underline}` +
+          `.header{display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #e5e7eb;padding-bottom:12px;margin-bottom:8px}` +
+          `.header h1{margin:0;font-size:22px}` +
+          `.btn-logout{background:#ef4444;color:#fff;padding:4px 10px;border-radius:6px;font-size:13px;font-weight:500}` +
+          `.sub{color:#6b7280;font-size:13px;margin:0 0 20px}` +
+          `.note{color:#92400e;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:6px 10px;font-size:13px;margin:0 0 16px}` +
+          `ul{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:10px}` +
+          `.card{border:1px solid #e5e7eb;border-radius:10px;padding:12px 14px;background:#fff}` +
+          `.row{display:flex;justify-content:space-between;align-items:baseline;gap:12px}` +
+          `.who{font-size:15px;word-break:break-all}` +
+          `.badge{font-size:12px;font-weight:600;white-space:nowrap;flex-shrink:0}` +
+          `.badge.live{color:#059669}.badge.off{color:#9ca3af;font-weight:500}` +
+          `.meta{color:#9ca3af;font-size:12px;margin-top:2px}` +
+          `.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}` +
+          `.chip{display:inline-flex;align-items:center;background:#f3f4f6;border-radius:6px;padding:2px 4px 2px 8px;font-size:13px}` +
+          `.chip .sl{color:#9ca3af;font-size:11px;margin-left:6px;padding:0 2px}` +
+          `.chip .sl::before{content:"·";margin-right:6px;color:#d1d5db}` +
+          `.chip .sl:hover{color:#2563eb}` +
+          `.none{color:#9ca3af;font-size:13px;font-style:italic}` +
+          `</style>` +
+          `<div class="header"><h1>Operators</h1><a href="/logout" class="btn-logout">Logout</a></div>` +
+          `<p class="sub">Signed in as <b>${htmlEscape(who.email)}</b> · admin view · ${alive.length} operator${alive.length === 1 ? "" : "s"}</p>` +
+          prunedNote +
+          `<ul>${cards.join("") || "<li class=\"card\"><span class=\"none\">no operators have connected yet</span></li>"}</ul>`
         );
       }
 

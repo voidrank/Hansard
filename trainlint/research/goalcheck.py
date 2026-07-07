@@ -139,11 +139,63 @@ def missing_purpose(name=None):
     return ""
 
 
+# operator-correction lint — the reader left a margin note in the report saying something is
+# WRONG (feedback.<name>.jsonl, kind=correction, written by feedback.py at --absorb time). A human
+# disputing a claim outranks any green metric: it must reach the agent's context, not sit in a
+# file. Cleared by re-examining the claim and adding "resolved": true to that line.
+def unaddressed_corrections(name=None):
+    """Warn while feedback.<name>.jsonl holds unresolved items. Corrections get the loud line
+    (a human disputing a claim outranks any green metric); confusion/readability/unclassified
+    get one soft line so glossary and report fixes also have a consumer, not just a display."""
+    if planlib is None:
+        return ""
+    name = planlib._active(name)
+    try:
+        import json as _json
+        p = paths.resolve(f"feedback.{name}.jsonl")
+        rows = []
+        if p.exists():
+            for x in p.read_text(encoding="utf-8").splitlines():
+                x = x.strip()
+                if not x or x.startswith("#"):
+                    continue
+                try:
+                    e = _json.loads(x)
+                except Exception:
+                    continue
+                if isinstance(e, dict):
+                    rows.append(e)
+    except Exception:
+        return ""
+    parts = []
+    todo = [r for r in rows if r.get("kind") == "correction" and not r.get("resolved")]
+    if todo:
+        heads = "; ".join(f"«{str(r.get('quote') or '')[:40]}»: “{str(r.get('note') or '')[:60]}”"
+                          for r in todo[:2])
+        more = f" (+{len(todo) - 2} more)" if len(todo) > 2 else ""
+        parts.append(f"⚠️ {len(todo)} operator CORRECTION(s) unaddressed — the reader disputes "
+                     f"the report: {heads}{more} — re-examine each claim against the data, then "
+                     f"mark that line resolved:true in feedback.{name}.jsonl")
+    soft = [r for r in rows if r.get("kind") in ("confusion", "readability", "unclassified")
+            and not r.get("resolved")]
+    if soft:
+        kinds = {}
+        for r in soft:
+            kinds[r["kind"]] = kinds.get(r["kind"], 0) + 1
+        parts.append("🖍 reader feedback pending ("
+                     + ", ".join(f"{v} {k}" for k, v in sorted(kinds.items()))
+                     + f"): read feedback.{name}.jsonl, apply each action (explain / fix the "
+                     f"report), then mark resolved:true")
+    return "  ·  ".join(parts)
+
+
 def brief(name=None):
     """Combined one-line goal warnings for the compass / report — MEANS-first framing, a MECHANICAL
-    main thread, a MISSING purpose, AND scope drift, each self-labeled; '' when everything is clean."""
+    main thread, a MISSING purpose, unaddressed operator CORRECTIONS, AND scope drift, each
+    self-labeled; '' when everything is clean."""
     parts = []
-    for w in (means_first(name), mechanical_main_thread(name), missing_purpose(name)):
+    for w in (means_first(name), mechanical_main_thread(name), missing_purpose(name),
+              unaddressed_corrections(name)):
         if w:
             parts.append(w)
     ds = drift(name)

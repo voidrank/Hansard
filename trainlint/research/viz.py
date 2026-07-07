@@ -546,6 +546,12 @@ abbr.gl-term{text-decoration:underline dotted #94a3b8;text-underline-offset:2px;
 .gl-box{margin:14px 0 4px;background:#fff;border:1px solid var(--line,#e2e8f0);border-radius:10px;padding:2px 14px}
 .gl-box summary{cursor:pointer;font-weight:700;font-size:12.5px;padding:9px 0}
 .gl-row{font-size:12px;color:#334155;padding:4px 0;border-top:1px solid var(--line,#eef2f7)}
+.fb-row{display:flex;gap:9px;align-items:flex-start;font-size:12px;color:#334155;padding:6px 0;border-top:1px solid var(--line,#eef2f7)}
+.fb-kind{flex:0 0 auto;color:#fff;font-size:10px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;border-radius:9px;padding:2px 8px;margin-top:1px}
+.fb-note{line-height:1.5}
+.fb-act{color:#166534;margin-top:2px;line-height:1.45}
+.fb-row.done{opacity:.55}
+.fb-done{color:#16a34a;font-weight:700;font-size:11px;margin-top:2px}
 """
 
 
@@ -715,7 +721,9 @@ CHAT_JS = r"""
         var pm=parseMemory(raw);
         wait.innerHTML="<b>Assistant:</b> "+esc(pm.clean); convo.push({role:'assistant',content:raw});
         var m=mem(); m.faq=m.faq||{}; m.faq[id]=m.faq[id]||[];
-        m.faq[id].push({q:q,a:pm.clean,ts:new Date().toISOString()});
+        var rec={q:q,a:pm.clean,ts:new Date().toISOString()};
+        if(focusText)rec.focus=focusText.slice(0,300);  // keep WHAT the question was about
+        m.faq[id].push(rec);
         m.glossary=m.glossary||[];
         pm.terms.forEach(function(t){if(t&&t.term)m.glossary.push({term:t.term,plain:t.plain||'',why:t.why||'',dec:id})});
         setMem(m); renderSaved(saved,id);
@@ -1542,6 +1550,41 @@ def glossary_html(glossary):
             + "".join(rows) + "</details>")
 
 
+def feedback_section_html(name):
+    """🖍 Operator feedback — every note/question the reader left, digested into WHY it was
+    left (confusion / correction / readability) plus the action each implies. The digest is
+    written by feedback.py at --absorb time; renders only when feedback exists. This closes
+    the loop visibly: the reader sees their margin notes were heard, the agent reads the same
+    file (feedback.<name>.jsonl) to fix the glossary, re-examine disputed decisions, and
+    improve the report itself."""
+    try:
+        fb = [e for e in tree._load_jsonl(paths.resolve(f"feedback.{name}.jsonl"))
+              if isinstance(e, dict)]
+        if not fb:
+            return ""
+        col = {"confusion": "#1d4ed8", "correction": "#b91c1c", "readability": "#92400e"}
+        kinds = {}
+        rows = []
+        for e in fb:
+            k = str(e.get("kind") or "unclassified")
+            done = bool(e.get("resolved"))
+            kinds[k] = kinds.get(k, 0) + 1
+            act = str(e.get("action") or e.get("insight") or "")
+            rows.append(
+                f"<div class='fb-row{' done' if done else ''}'>"
+                f"<span class='fb-kind' style='background:{col.get(k, '#64748b')}'>{_e(k)}</span>"
+                f"<div><div class='fb-note'>“{_e(_trunc(str(e.get('quote') or ''), 90))}” — "
+                f"{_ec(str(e.get('note') or ''))}</div>"
+                + (f"<div class='fb-act'>→ {_ec(act)}</div>" if act else "")
+                + ("<div class='fb-done'>✓ addressed</div>" if done else "")
+                + "</div></div>")
+        head = " · ".join(f"{v} {k}" for k, v in sorted(kinds.items()))
+        return (f"<details class='gl-box'><summary>🖍 Operator feedback — {head}</summary>"
+                + "".join(rows) + "</details>")
+    except Exception:
+        return ""  # feedback is an annotation layer — it must never take the report down
+
+
 def render_html(name, goal, bar, pl, nodes, knowledge, kinds, id2phase, phase_order,
                 glossary=None, clarify=None, motivation="", tldr="", surprises=None, purpose="",
                 narrative=""):
@@ -1766,6 +1809,7 @@ def render_html(name, goal, bar, pl, nodes, knowledge, kinds, id2phase, phase_or
     for k, (i, _l, h) in enumerate(secs):
         H.append(f"<section class='rsec{' on' if k == 0 else ''}' id='{i}'>{h}</section>")
 
+    H.append(feedback_section_html(name))
     H.append(glossary_html(glossary))
 
     H.append(f"<div class='foot'>Trainlint · derived from research/plan.{_e(name)}.jsonl + "
@@ -2229,8 +2273,10 @@ def absorb(name, blob_path):
             for it in items:
                 q = (it.get("q") or "").strip()
                 if q and (dec, q) not in seen:
-                    f.write(_json.dumps({"dec": dec, "q": q, "a": it.get("a", ""),
-                                         "ts": it.get("ts", "")}, ensure_ascii=False) + "\n")
+                    rec = {"dec": dec, "q": q, "a": it.get("a", ""), "ts": it.get("ts", "")}
+                    if it.get("focus"):  # what the question was ABOUT (highlight/card text)
+                        rec["focus"] = it["focus"]
+                    f.write(_json.dumps(rec, ensure_ascii=False) + "\n")
                     seen.add((dec, q))
                     cadded += 1
 
@@ -2251,23 +2297,42 @@ def absorb(name, blob_path):
 
     # operator highlight-comments (the 🖍 notes) -> comments.<name>.jsonl, so margin notes made
     # in the browser reach the substrate the agent reads next session. Dedupe by annotation id.
+    # dedupe by (id, text) — RE-absorbing is a no-op, but an EDITED note (same id, new text)
+    # appends a new version line, so edits reach the digest instead of vanishing behind the id
     apath = paths.wfile(f"comments.{name}.jsonl")
-    ahave = {e.get("id") for e in (tree._load_jsonl(apath) if apath.exists() else [])}
+    ahave = {(e.get("id"), e.get("comment"))
+             for e in (tree._load_jsonl(apath) if apath.exists() else []) if isinstance(e, dict)}
     aadded = 0
     with apath.open("a", encoding="utf-8") as f:
         for an in (blob.get("annotations") or []):
-            aid = (an.get("id") or "").strip()
-            if aid and aid not in ahave and (an.get("comment") or "").strip():
-                f.write(_json.dumps({"id": aid, "quote": an.get("quote", ""),
-                                     "comment": an.get("comment", ""), "sec": an.get("sec", ""),
-                                     "ts": an.get("ts", "")}, ensure_ascii=False) + "\n")
-                ahave.add(aid)
+            if not isinstance(an, dict):
+                continue
+            aid = str(an.get("id") or "").strip()
+            note = str(an.get("comment") or "").strip()
+            if aid and note and (aid, note) not in ahave:
+                f.write(_json.dumps({"id": aid, "quote": str(an.get("quote") or ""),
+                                     "comment": note, "sec": str(an.get("sec") or ""),
+                                     "ts": str(an.get("ts") or "")}, ensure_ascii=False) + "\n")
+                ahave.add((aid, note))
                 aadded += 1
+
+    # DIGEST the feedback: classify every new note/question into confusion / correction /
+    # readability with an insight + action each (feedback.<name>.jsonl) — that's what makes the
+    # capture usable: glossary fixes, plan re-examination, report improvements. Fail-open.
+    fsum = ""
+    try:
+        import feedback as _fb
+        _fb.digest(name)
+        fsum = _fb.summary(name)
+    except Exception as _fe:  # fail-open but NEVER silent — a broken digest must leave a trace
+        print(f"[absorb] feedback digest skipped: {_fe}", file=sys.stderr)
 
     htmlpath, _slides, _ = generate(name)
     print(f"absorbed {added} glossary term(s) + {cadded} FAQ entr(y/ies) + {madded} mastered "
           f"decision(s) + {aadded} highlight note(s) into {gpath.name} + {cpath.name} + "
-          f"{apath.name} + plan-progress\nregenerated HTML: {htmlpath}")
+          f"{apath.name} + plan-progress"
+          + (f"\nfeedback digest: {fsum}" if fsum else "")
+          + f"\nregenerated HTML: {htmlpath}")
 
 
 def main():

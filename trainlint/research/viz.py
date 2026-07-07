@@ -744,6 +744,7 @@ CHAT_JS = r"""
     bar.appendChild(k); bar.appendChild(ex); document.body.appendChild(bar);
   }
   document.querySelectorAll('.tl-chat').forEach(initWidget); toolbar();
+  window.tlInitChat=initWidget;  // ANNOT_JS mounts ad-hoc chats (Ask-AI on a highlight note)
 })();
 """
 
@@ -817,14 +818,18 @@ mark.tl-hl{background:#fde68a;color:#1f2937;border-bottom:2px solid #f59e0b;bord
 .ann-btn{position:fixed;z-index:90;border:1px solid #f59e0b;background:#fffbeb;color:#92400e;border-radius:18px;
   padding:5px 12px;font-size:12.5px;font-weight:700;cursor:pointer;box-shadow:0 4px 14px rgba(15,23,42,.18)}
 .ann-pop{position:fixed;z-index:95;background:#fff;border:1px solid var(--line);border-radius:12px;padding:11px;
-  width:min(340px,92vw);box-shadow:0 10px 30px rgba(15,23,42,.22);font-size:13px;color:#0f172a}
+  width:min(340px,92vw);max-height:min(560px,82vh);overflow-y:auto;box-shadow:0 10px 30px rgba(15,23,42,.22);font-size:13px;color:#0f172a}
 .ann-q{font-size:12px;color:#64748b;border-left:3px solid #fde68a;padding-left:8px;margin-bottom:8px;max-height:70px;overflow:hidden}
 .ann-ta{width:100%;min-height:64px;border:1px solid #cbd5e1;border-radius:8px;padding:7px 9px;font:inherit;font-size:13px;resize:vertical}
 .ann-row{display:flex;gap:7px;margin-top:8px}
 .ann-row button{border:0;border-radius:8px;padding:5px 13px;font-weight:600;cursor:pointer;font-size:12.5px}
 .ann-save{background:#4f46e5;color:#fff}
+.ann-ai{background:#ecfdf5;color:#047857;border:1px solid #a7f3d0!important}
 .ann-del{background:#fee2e2;color:#b91c1c}
 .ann-x{background:#eef2f7;color:#334155}
+.ann-pop.haschat{width:min(480px,94vw)}
+.ann-chat{margin-top:4px}
+.ann-chat .tl-chat{margin:0}
 .ann-list{max-height:300px;overflow-y:auto;display:flex;flex-direction:column;gap:9px}
 .ann-item{cursor:pointer;border:1px solid var(--line);border-radius:9px;padding:7px 9px}
 .ann-item:hover{background:#f8fafc}
@@ -908,8 +913,10 @@ ANNOT_JS = r"""
     pop.innerHTML='<div class="ann-q">“'+esc(quote.length>160?quote.slice(0,160)+'…':quote)+'”</div>'+
       '<textarea class="ann-ta" placeholder="Your note…">'+esc(existing?existing.comment:'')+'</textarea>'+
       '<div class="ann-row"><button class="ann-save">Save</button>'+
+      '<button class="ann-ai">💬 Ask AI</button>'+
       (existing?'<button class="ann-del">Delete</button>':'')+
-      '<button class="ann-x">Cancel</button></div>';
+      '<button class="ann-x">Cancel</button></div>'+
+      '<div class="ann-chat"></div>';
     var rect;
     if(existing){var m0=document.querySelector('mark[data-ann="'+existing.id+'"]');
       rect=m0?m0.getBoundingClientRect():{left:window.innerWidth/2,width:0,bottom:window.innerHeight/3};}
@@ -917,6 +924,16 @@ ANNOT_JS = r"""
     place(pop,rect);pop.style.display='block';btn.style.display='none';
     var ta=pop.querySelector('.ann-ta');ta.focus();
     pop.querySelector('.ann-x').onclick=hideUi;
+    pop.querySelector('.ann-ai').onclick=function(){  // chat grounded in the highlight (+ the note)
+      var host=pop.querySelector('.ann-chat');
+      if(host.firstChild){host.innerHTML='';pop.classList.remove('haschat');return;}
+      var note=ta.value.trim();
+      var focus='HIGHLIGHTED PASSAGE: "'+quote+'"'+(note?('\nOPERATOR NOTE ON IT: '+note):'');
+      var w=document.createElement('div');w.className='tl-chat';w.setAttribute('data-focus',focus);
+      host.appendChild(w);
+      if(window.tlInitChat){try{window.tlInitChat(w);var open=w.querySelector('.tl-ask');if(open)open.click();}catch(e){}}
+      pop.classList.add('haschat');
+    };
     if(existing){
       pop.querySelector('.ann-del').onclick=function(){
         save(load().filter(function(a){return a.id!==existing.id}));

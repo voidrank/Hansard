@@ -737,7 +737,8 @@ CHAT_JS = r"""
       if(v!=null)lsSet(slot,v.trim());
     };
     var ex=document.createElement('button'); ex.textContent='⬇ Export memory';
-    ex.onclick=function(){var m=mem(),blob={project:DATA.project,faq:m.faq||{},glossary:m.glossary||[],mastered:m.mastered||{}};
+    ex.onclick=function(){var m=mem(),blob={project:DATA.project,faq:m.faq||{},glossary:m.glossary||[],mastered:m.mastered||{},
+      annotations:(function(){try{return JSON.parse(lsGet('trainlint_ann_'+DATA.project))||[]}catch(e){return[]}})()};
       var a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(blob,null,2)],{type:'application/json'}));
       a.download='viz-memory.'+DATA.project+'.json';a.click();};
     bar.appendChild(k); bar.appendChild(ex); document.body.appendChild(bar);
@@ -803,6 +804,195 @@ NAV_JS = r"""
     var s=el.closest('.rsec');
     if(s&&!s.classList.contains('on')) show(s.id,false);
   });
+})();
+"""
+
+# Highlight-to-comment: select any text in the report, click the floating 🖍 button, write a
+# note. Highlights live in localStorage (trainlint_ann_<project>) anchored by quote+context —
+# they survive report regeneration as long as the quoted text still exists (else they show as
+# ⚠ orphans in the Notes drawer). "Export memory" carries them; `viz.py <name> --absorb` folds
+# them into comments.<name>.jsonl so the operator's margin notes reach the substrate.
+ANNOT_CSS = """
+mark.tl-hl{background:#fde68a;color:#1f2937;border-bottom:2px solid #f59e0b;border-radius:2px;cursor:pointer;padding:0 1px}
+.ann-btn{position:fixed;z-index:90;border:1px solid #f59e0b;background:#fffbeb;color:#92400e;border-radius:18px;
+  padding:5px 12px;font-size:12.5px;font-weight:700;cursor:pointer;box-shadow:0 4px 14px rgba(15,23,42,.18)}
+.ann-pop{position:fixed;z-index:95;background:#fff;border:1px solid var(--line);border-radius:12px;padding:11px;
+  width:min(340px,92vw);box-shadow:0 10px 30px rgba(15,23,42,.22);font-size:13px;color:#0f172a}
+.ann-q{font-size:12px;color:#64748b;border-left:3px solid #fde68a;padding-left:8px;margin-bottom:8px;max-height:70px;overflow:hidden}
+.ann-ta{width:100%;min-height:64px;border:1px solid #cbd5e1;border-radius:8px;padding:7px 9px;font:inherit;font-size:13px;resize:vertical}
+.ann-row{display:flex;gap:7px;margin-top:8px}
+.ann-row button{border:0;border-radius:8px;padding:5px 13px;font-weight:600;cursor:pointer;font-size:12.5px}
+.ann-save{background:#4f46e5;color:#fff}
+.ann-del{background:#fee2e2;color:#b91c1c}
+.ann-x{background:#eef2f7;color:#334155}
+.ann-list{max-height:300px;overflow-y:auto;display:flex;flex-direction:column;gap:9px}
+.ann-item{cursor:pointer;border:1px solid var(--line);border-radius:9px;padding:7px 9px}
+.ann-item:hover{background:#f8fafc}
+.ann-iq{color:#92400e;font-size:12px}
+.ann-orph{color:#b91c1c;font-size:11px;font-weight:700}
+@media print{.ann-btn,.ann-pop{display:none}}
+"""
+
+ANNOT_JS = r"""
+(function(){
+  var wrap=document.querySelector('.wrap'); if(!wrap||!window.getSelection) return;
+  var proj=(document.title||'').split(' ')[0];
+  var KEY='trainlint_ann_'+proj;
+  function lsGet(k){try{return localStorage.getItem(k)}catch(e){return null}}
+  function lsSet(k,v){try{localStorage.setItem(k,v)}catch(e){}}
+  function load(){try{return JSON.parse(lsGet(KEY))||[]}catch(e){return[]}}
+  function save(a){lsSet(KEY,JSON.stringify(a))}
+  function esc(s){return (s==null?'':String(s)).replace(/[&<>]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;'}[c]})}
+
+  // the text universe: every text node under .wrap in document order (same order Range.toString uses)
+  function collect(){
+    var nodes=[],text='',w=document.createTreeWalker(wrap,NodeFilter.SHOW_TEXT,null),n;
+    while((n=w.nextNode())){nodes.push({n:n,start:text.length});text+=n.nodeValue;}
+    return {nodes:nodes,text:text};
+  }
+  function rangeStart(r){var pre=r.cloneRange();pre.selectNodeContents(wrap);pre.setEnd(r.startContainer,r.startOffset);return pre.toString().length;}
+  function wrapOffsets(s,e,id){
+    var idx=collect();
+    for(var k=0;k<idx.nodes.length;k++){
+      var rec=idx.nodes[k],ns=rec.start,ne=ns+rec.n.nodeValue.length;
+      if(ne<=s||ns>=e) continue;
+      var node=rec.n,p=node.parentNode;
+      if(!p||(p.closest&&p.closest('svg,script,style,textarea'))) continue;
+      var from=Math.max(s-ns,0),to=Math.min(e-ns,node.nodeValue.length);
+      if(to<=from) continue;
+      if(to<node.nodeValue.length) node.splitText(to);
+      if(from>0) node=node.splitText(from);
+      var m=document.createElement('mark');m.className='tl-hl';m.setAttribute('data-ann',id);
+      p.insertBefore(m,node);m.appendChild(node);
+    }
+  }
+  function anchor(a){ // quote + saved context -> offsets in the current text; null if the text changed
+    var hay=collect().text,best=-1,from=0;
+    while(true){var i=hay.indexOf(a.quote,from);if(i<0)break;
+      if(best<0)best=i;
+      var p=hay.slice(Math.max(0,i-(a.prefix||'').length),i);
+      var s=hay.slice(i+a.quote.length,i+a.quote.length+(a.suffix||'').length);
+      if((!a.prefix||p===a.prefix)&&(!a.suffix||s===a.suffix)){best=i;break;}
+      from=i+1;}
+    return best<0?null:{s:best,e:best+a.quote.length};
+  }
+  function unwrap(m){var p=m.parentNode;while(m.firstChild)p.insertBefore(m.firstChild,m);p.removeChild(m);p.normalize();}
+
+  var btn=document.createElement('button');btn.className='ann-btn';btn.textContent='🖍 Comment';btn.style.display='none';document.body.appendChild(btn);
+  var pop=document.createElement('div');pop.className='ann-pop';pop.style.display='none';document.body.appendChild(pop);
+  var pending=null;
+  var refreshCount=function(){};
+  function hideUi(){btn.style.display='none';pop.style.display='none';}
+  function place(el,rect){
+    var x=Math.min(Math.max((rect.left||0)+(rect.width||0)/2-70,8),window.innerWidth-170);
+    var y=Math.min((rect.bottom||60)+8,window.innerHeight-80);
+    el.style.left=x+'px';el.style.top=y+'px';
+  }
+  function offer(){
+    var sel=window.getSelection();
+    if(!sel||sel.isCollapsed||!sel.rangeCount){btn.style.display='none';return;}
+    var r=sel.getRangeAt(0);
+    var ca=r.commonAncestorContainer; ca=ca.nodeType===3?ca.parentNode:ca;
+    if(!wrap.contains(ca)||(ca.closest&&ca.closest('.ann-pop,.tl-panel,textarea,svg'))){btn.style.display='none';return;}
+    var q=r.toString(); if(!q.trim()||q.length>1500){btn.style.display='none';return;}
+    var s=rangeStart(r);
+    pending={s:s,e:s+q.length,quote:q};
+    place(btn,r.getBoundingClientRect());btn.style.display='block';
+  }
+  document.addEventListener('mouseup',function(e){if(e.target===btn||pop.contains(e.target))return;setTimeout(offer,10);});
+  document.addEventListener('touchend',function(e){if(e.target===btn||pop.contains(e.target))return;setTimeout(offer,150);});
+  btn.addEventListener('click',function(){if(pending)editPop(null,pending);});
+
+  function editPop(existing,pend){
+    var quote=existing?existing.quote:pend.quote;
+    pop.innerHTML='<div class="ann-q">“'+esc(quote.length>160?quote.slice(0,160)+'…':quote)+'”</div>'+
+      '<textarea class="ann-ta" placeholder="Your note…">'+esc(existing?existing.comment:'')+'</textarea>'+
+      '<div class="ann-row"><button class="ann-save">Save</button>'+
+      (existing?'<button class="ann-del">Delete</button>':'')+
+      '<button class="ann-x">Cancel</button></div>';
+    var rect;
+    if(existing){var m0=document.querySelector('mark[data-ann="'+existing.id+'"]');
+      rect=m0?m0.getBoundingClientRect():{left:window.innerWidth/2,width:0,bottom:window.innerHeight/3};}
+    else rect={left:parseFloat(btn.style.left)||0,width:0,bottom:parseFloat(btn.style.top)||60};
+    place(pop,rect);pop.style.display='block';btn.style.display='none';
+    var ta=pop.querySelector('.ann-ta');ta.focus();
+    pop.querySelector('.ann-x').onclick=hideUi;
+    if(existing){
+      pop.querySelector('.ann-del').onclick=function(){
+        save(load().filter(function(a){return a.id!==existing.id}));
+        document.querySelectorAll('mark[data-ann="'+existing.id+'"]').forEach(unwrap);
+        hideUi();refreshCount();
+      };
+    }
+    pop.querySelector('.ann-save').onclick=function(){
+      var c=ta.value.trim();if(!c){hideUi();return;}
+      if(existing){
+        var anns=load();
+        for(var i=0;i<anns.length;i++)if(anns[i].id===existing.id)anns[i].comment=c;
+        save(anns);hideUi();refreshCount();return;
+      }
+      var text=collect().text;
+      var id='a'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+      var a={id:id,quote:pend.quote,
+             prefix:text.slice(Math.max(0,pend.s-32),pend.s),
+             suffix:text.slice(pend.e,pend.e+32),
+             comment:c,sec:'',ts:new Date().toISOString()};
+      wrapOffsets(pend.s,pend.e,id);
+      var m1=document.querySelector('mark[data-ann="'+id+'"]');
+      if(m1&&m1.closest){var sc=m1.closest('.rsec');a.sec=sc?sc.id:'';}
+      var anns2=load();anns2.push(a);save(anns2);
+      try{window.getSelection().removeAllRanges()}catch(e){}
+      pending=null;hideUi();refreshCount();
+    };
+  }
+
+  // click a highlight -> view/edit its note
+  document.addEventListener('click',function(e){
+    var m=e.target&&e.target.closest?e.target.closest('mark.tl-hl'):null;
+    if(!m)return;
+    var id=m.getAttribute('data-ann');
+    var a=load().filter(function(x){return x.id===id})[0];
+    if(a)editPop(a,null);
+  });
+
+  // notes drawer button in the bottom-right toolbar (shared with the chat toolbar when present)
+  function drawer(){
+    var bar=document.querySelector('.tl-bar');
+    if(!bar){bar=document.createElement('div');bar.className='tl-bar';document.body.appendChild(bar);}
+    var b=document.createElement('button');bar.insertBefore(b,bar.firstChild);
+    refreshCount=function(){b.textContent='🖍 Notes ('+load().length+')';};
+    refreshCount();
+    b.onclick=function(){
+      var anns=load();
+      if(!anns.length){alert('No notes yet — select any text in the report, then click 🖍 Comment.');return;}
+      pop.innerHTML='<div class="ann-list">'+anns.map(function(a){
+        var live=document.querySelector('mark[data-ann="'+a.id+'"]');
+        return '<div class="ann-item" data-ann="'+a.id+'">'+(live?'':'<span class="ann-orph">⚠ text changed</span> ')+
+          '<span class="ann-iq">“'+esc(a.quote.slice(0,70))+(a.quote.length>70?'…':'')+'”</span><br>'+esc(a.comment)+'</div>';
+      }).join('')+'</div><div class="ann-row"><button class="ann-x">Close</button></div>';
+      place(pop,{left:window.innerWidth-360,width:0,bottom:Math.max(window.innerHeight-420,60)});
+      pop.style.display='block';
+      pop.querySelector('.ann-x').onclick=hideUi;
+      pop.querySelectorAll('.ann-item').forEach(function(it){
+        it.onclick=function(){
+          var id=it.getAttribute('data-ann');
+          var m=document.querySelector('mark[data-ann="'+id+'"]');if(!m)return;
+          var s=m.closest?m.closest('.rsec'):null;
+          if(s&&!s.classList.contains('on')){
+            var nb=document.querySelector('.rnav button[data-sec="'+s.id+'"]');if(nb)nb.click();
+          }
+          hideUi();m.scrollIntoView({block:'center'});
+        };
+      });
+    };
+  }
+
+  // restore saved highlights (quote+context re-anchoring; unfindable ones stay as drawer orphans)
+  var anns=load();
+  for(var i=0;i<anns.length;i++){
+    try{var pos=anchor(anns[i]);if(pos)wrapOffsets(pos.s,pos.e,anns[i].id);}catch(e){}
+  }
+  try{drawer();}catch(e){}
 })();
 """
 
@@ -1352,7 +1542,7 @@ def render_html(name, goal, bar, pl, nodes, knowledge, kinds, id2phase, phase_or
 
     H = ['<!doctype html><html lang="en"><head><meta charset="utf-8">',
          '<meta name="viewport" content="width=device-width,initial-scale=1">',
-         f"<title>{_e(name)} — research tree</title><style>{CSS}{CHAT_CSS}{QUIZ_CSS}</style></head><body><div class='wrap'>"]
+         f"<title>{_e(name)} — research tree</title><style>{CSS}{CHAT_CSS}{QUIZ_CSS}{ANNOT_CSS}</style></head><body><div class='wrap'>"]
 
     # ---- header / TLDR ----
     H.append("<div class='hdr'>")
@@ -1571,6 +1761,7 @@ def render_html(name, goal, bar, pl, nodes, knowledge, kinds, id2phase, phase_or
     H.append("<script>" + CHAT_JS + "</script>")
     H.append("<script>" + QUIZ_JS + "</script>")
     H.append("<script>" + NAV_JS + "</script>")
+    H.append("<script>" + ANNOT_JS + "</script>")  # last: it indexes the DOM the widgets built
     H.append("</body></html>")
     return "\n".join(H)
 
@@ -2041,9 +2232,25 @@ def absorb(name, blob_path):
     except Exception:
         pass
 
+    # operator highlight-comments (the 🖍 notes) -> comments.<name>.jsonl, so margin notes made
+    # in the browser reach the substrate the agent reads next session. Dedupe by annotation id.
+    apath = paths.wfile(f"comments.{name}.jsonl")
+    ahave = {e.get("id") for e in (tree._load_jsonl(apath) if apath.exists() else [])}
+    aadded = 0
+    with apath.open("a", encoding="utf-8") as f:
+        for an in (blob.get("annotations") or []):
+            aid = (an.get("id") or "").strip()
+            if aid and aid not in ahave and (an.get("comment") or "").strip():
+                f.write(_json.dumps({"id": aid, "quote": an.get("quote", ""),
+                                     "comment": an.get("comment", ""), "sec": an.get("sec", ""),
+                                     "ts": an.get("ts", "")}, ensure_ascii=False) + "\n")
+                ahave.add(aid)
+                aadded += 1
+
     htmlpath, _slides, _ = generate(name)
     print(f"absorbed {added} glossary term(s) + {cadded} FAQ entr(y/ies) + {madded} mastered "
-          f"decision(s) into {gpath.name} + {cpath.name} + plan-progress\nregenerated HTML: {htmlpath}")
+          f"decision(s) + {aadded} highlight note(s) into {gpath.name} + {cpath.name} + "
+          f"{apath.name} + plan-progress\nregenerated HTML: {htmlpath}")
 
 
 def main():

@@ -76,16 +76,34 @@ def ensure_relay():
 def ensure(viz_dir):
     """Ensure a loopback server serves `viz_dir`; return the base URL (or '' on failure). Silent +
     idempotent — a no-op if something already answers on the port. This is the ONLY spawn point;
-    call it once per render (from generate)."""
+    call it once per render (from generate).
+
+    Spawns chat_backend.py (the LIVE backend: /chat, /edit, /digest + static, loopback-only like
+    us) — NOT plain http.server: a dumb static server that wins this race squats the port 501'ing
+    every POST, and the cron keepalive never replaces it because the port "answers". http.server
+    remains only as the fallback for a stripped install without chat_backend.py."""
     if _disabled():
         return ""
     port = _port()
     try:
         if not _listening(port):
+            _cb = Path(__file__).resolve().parent / "chat_backend.py"
+            use_backend = _cb.exists()
+            cmd = ([sys.executable, str(_cb), str(viz_dir), str(port)] if use_backend else
+                   [sys.executable, "-m", "http.server", str(port), "--bind", HOST,
+                    "--directory", str(viz_dir)])
+            # Log the backend's stderr (append) rather than DEVNULL it: the loser of a :8420 bind race
+            # OR a genuine startup bug otherwise vanishes into the void. We deliberately do NOT fall
+            # back to http.server when chat_backend crashes — a static server would 501 every POST and
+            # squat the port so the cron keepalive never replaces it (the bug ensure() exists to avoid).
+            # A crash here is loud in the log + retried by keepalive.sh every minute; that's the safety net.
+            try:
+                _err = open("/tmp/tl_backend_serve.log", "ab") if use_backend else subprocess.DEVNULL
+            except Exception:
+                _err = subprocess.DEVNULL
             subprocess.Popen(
-                [sys.executable, "-m", "http.server", str(port), "--bind", HOST,
-                 "--directory", str(viz_dir)],
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                cmd,
+                stdout=subprocess.DEVNULL, stderr=_err,
                 start_new_session=True)  # detached — survives this process
         ensure_relay()
         return f"http://{HOST}:{port}"

@@ -879,6 +879,10 @@ mark.tl-hl{background:#fde68a;color:#1f2937;border-bottom:2px solid #f59e0b;bord
 .ann-item:hover{background:#f8fafc}
 .ann-iq{color:#92400e;font-size:12px}
 .ann-orph{color:#b91c1c;font-size:11px;font-weight:700}
+.ann-digest{background:#eef2ff;color:#3730a3;border:1px solid #c7d2fe!important}
+.ann-digest:disabled{opacity:.55;cursor:default}
+.ann-dst{margin-top:7px;font-size:12px;color:#475569;min-height:15px}
+.ann-dst a{color:#4f46e5;font-weight:700}
 @media print{.ann-btn,.ann-pop{display:none}}
 """
 
@@ -1078,11 +1082,11 @@ ANNOT_JS = r"""
     if(!anns.length&&!Object.keys(faq).length) return null;
     return JSON.stringify({project:proj,annotations:anns,faq:faq});
   }
-  function fbSync(){
-    if(fbDead||location.protocol.indexOf('http')!==0||!window.fetch) return;
-    var body=fbPayload(); if(!body||body===lastSync) return;
+  function fbSync(){  // returns the in-flight promise (or undefined when there is nothing to do),
+    if(fbDead||location.protocol.indexOf('http')!==0||!window.fetch) return;  // so the digest
+    var body=fbPayload(); if(!body||body===lastSync) return;                  // button can flush-then-run
     try{
-      fetch('/api/feedback?project='+encodeURIComponent(proj),
+      return fetch('/api/feedback?project='+encodeURIComponent(proj),
             {method:'POST',headers:{'content-type':'application/json'},body:body,credentials:'same-origin'})
         .then(function(r){return r.text().then(function(t){
           // a worker WITHOUT this route (or not signed in) answers 200 login-page HTML or 401 —
@@ -1186,6 +1190,73 @@ ANNOT_JS = r"""
     if(a)editPop(a,null);
   });
 
+  // --- "Deal with all requests": flush the pending feedback, then ask the operator machine
+  // (via the relay: POST digest -> 202 + background job) to digest EVERYTHING queued — fold the
+  // notes/Ask-AI into the substrate, classify, auto-apply, re-render + re-upload — and poll
+  // digest/status until it lands. Relative URLs ride whatever prefix the page is served under
+  // (/r/<ns>/, /<email>/, flat, loopback) exactly like the chat + edit endpoints do. ---
+  // Single-instance across drawer open/close: the drawer rebuilds its innerHTML every open, so a
+  // captured button/status node goes stale (a running poll would update a DETACHED element while the
+  // fresh drawer shows nothing). So: keep NO node refs — look them up live on every write — and gate
+  // on a closure flag (digestBusy), not the button's .disabled (which resets on rebuild). digMsgHtml
+  // is the last progress line so a reopened drawer can restore it.
+  var digestBusy=false,digMsgHtml='';
+  function _dn(){return pop.querySelector('.ann-dst');}   // live status node (or null if drawer closed)
+  function _db(){return pop.querySelector('.ann-digest');} // live button node
+  function setDst(html){digMsgHtml=html;var n=_dn();if(n)n.innerHTML=html;}
+  function setDb(label,disabled){var n=_db();if(n){n.textContent=label;n.disabled=!!disabled;}}
+  function digestRestore(){var n=_dn();if(n&&digMsgHtml)n.innerHTML=digMsgHtml;if(digestBusy)setDb('🤖 working…',true);}
+  function endDigest(html){digestBusy=false;setDst(html);setDb('🤖 Deal with all requests',false);}
+  function pollDigest(n){
+    if(!digestBusy)return;  // superseded (page reset) — stop the loop
+    if(n>120){digestBusy=false;setDst('still running — reload the page later to see the updates.');return;}
+    setTimeout(function(){
+      if(!digestBusy)return;
+      fetch('digest/status?project='+encodeURIComponent(proj),{credentials:'same-origin'})
+        .then(function(r){return r.json()})
+        .then(function(j){
+          if(!digestBusy)return;
+          if(j.state==='done'){
+            endDigest('✅ done — <a href="javascript:location.reload()">reload the report</a>'+
+              (j.summary?'<br>'+esc(String(j.summary)).slice(0,240):''));
+          }else if(j.state==='error'){
+            endDigest('✗ digest failed: '+esc(String(j.error||'unknown')).slice(0,200));
+          }else{
+            setDst('🤖 digesting on the operator machine… '+((n+1)*5)+'s (LLM pass + re-render can take a few minutes)');
+            pollDigest(n+1);
+          }
+        }).catch(function(){pollDigest(n+1);});
+    },5000);
+  }
+  function runDigest(){
+    if(digestBusy){digestRestore();return;}  // one loop only; reopening just re-shows progress
+    digestBusy=true;setDb('🤖 working…',true);setDst('⇪ syncing your feedback to the server…');
+    fbDead=false;
+    var flush=null;try{flush=fbSync();}catch(e){}
+    (flush||Promise.resolve()).then(function(){
+      // be honest if the newest notes never reached the server (an ack sets lastSync=body, so a
+      // still-dirty payload means the flush didn't land — offline/undeployed worker). Proceed anyway:
+      // the digest works on whatever IS queued server-side; we just don't claim those notes are in.
+      var caveat='';var dirty=fbPayload();
+      if(dirty&&dirty!==lastSync)caveat='⚠ couldn’t sync your newest notes (server offline?) — digesting what’s already queued.<br>';
+      setDst(caveat+'🤖 starting the digest…');
+      return fetch('digest',{method:'POST',headers:{'content-type':'application/json'},
+                             body:JSON.stringify({project:proj}),credentials:'same-origin'});
+    }).then(function(r){return r.text().then(function(t){return {ok:r.ok,status:r.status,text:t};});})
+    .then(function(r){
+      var j=null;try{j=JSON.parse(r.text)}catch(e){}
+      if(r.status===403){digestBusy=false;setDb('🤖 Deal with all requests',false);
+        setDst('owner-only — sign in as the report owner to run this.');return;}
+      if(r.status===503){digestBusy=false;setDb('🤖 Deal with all requests',false);
+        setDst('operator machine is offline — your feedback is safely queued and will be digested on its next run.');return;}
+      if(!r.ok||!j||!j.ok){digestBusy=false;setDb('🤖 Deal with all requests',false);
+        setDst('✗ '+esc(String((j&&j.error)||('error '+r.status))));return;}
+      setDst(j.already?'🤖 a digest is already running — watching it…':'🤖 digest started…');
+      pollDigest(0);
+    }).catch(function(e){digestBusy=false;setDb('🤖 Deal with all requests',false);
+      setDst('✗ unreachable ('+esc(e&&e.message?e.message:'network')+') — your feedback stays queued.');});
+  }
+
   // notes drawer button in the bottom-right toolbar (shared with the chat toolbar when present)
   function drawer(){
     var bar=document.querySelector('.tl-bar');
@@ -1200,10 +1271,13 @@ ANNOT_JS = r"""
         var live=document.querySelector('mark[data-ann="'+a.id+'"]');
         return '<div class="ann-item" data-ann="'+a.id+'">'+(live?'':'<span class="ann-orph">⚠ text changed</span> ')+
           '<span class="ann-iq">“'+esc(a.quote.slice(0,70))+(a.quote.length>70?'…':'')+'”</span><br>'+esc(a.comment)+'</div>';
-      }).join('')+'</div><div class="ann-row"><button class="ann-x">Close</button></div>';
+      }).join('')+'</div><div class="ann-row"><button class="ann-digest">🤖 Deal with all requests</button>'+
+        '<button class="ann-x">Close</button></div><div class="ann-dst"></div>';
       place(pop,{left:window.innerWidth-360,width:0,bottom:Math.max(window.innerHeight-420,60)});
       pop.style.display='block';
       pop.querySelector('.ann-x').onclick=hideUi;
+      pop.querySelector('.ann-digest').onclick=runDigest;
+      digestRestore();  // if a digest is mid-run, show its live progress in this freshly-built drawer
       pop.querySelectorAll('.ann-item').forEach(function(it){
         it.onclick=function(){
           var id=it.getAttribute('data-ann');
@@ -2690,13 +2764,76 @@ def _fold_blob(name, blob):
     return added, cadded, madded, aadded
 
 
+def _digest_status_write(obj):
+    """Atomically write data_root/.digest_status.json — the tiny contract between a digest run
+    (any entry point: CLI, chat_backend's POST /digest) and the report page's status poll.
+    States: running {started,pid,project} -> done {finished,summary} | error {finished,error}.
+    Fail-silent: a broken status write must never break the digest itself."""
+    import json as _json
+    import os as _os
+    import tempfile as _tf
+    try:
+        p = paths.data_root() / ".digest_status.json"
+        fd, tmp = _tf.mkstemp(dir=str(p.parent), prefix=".tl-dst-")
+        with _os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(_json.dumps(obj, ensure_ascii=False))
+        _os.replace(tmp, p)
+    except Exception:
+        pass
+
+
+def digest_alive(pid):
+    """True iff `pid` is a LIVE digest process (a `viz.py … --digest`) — NOT merely any live pid.
+    Both digest guards (the button spawn in chat_backend and this CLI wrapper) key off this so they
+    (a) never wedge forever on a status whose pid was recycled to some unrelated process, and
+    (b) never double-run alongside a genuinely slow-but-alive digest. Reads /proc/<pid>/cmdline
+    (Linux); anything unreadable/non-Linux -> False (fail-open: the guard then allows a run rather
+    than blocking, so a stuck status can never permanently jam the button)."""
+    try:
+        pid = int(pid)
+        if pid <= 0:
+            return False
+        cl = Path(f"/proc/{pid}/cmdline").read_bytes().replace(b"\x00", b" ")
+        return b"--digest" in cl and b"viz" in cl
+    except Exception:
+        return False
+
+
 def digest_feedback(default_name=None):
+    """Status-tracked wrapper around the real digest (_digest_feedback_run) so the report page's
+    “Deal with all requests” button can poll progress. Writes running/done/error to
+    .digest_status.json, and refuses to start while another LIVE digest run holds it (two
+    concurrent runs would race the glossary/clarify appends)."""
+    import json as _json
+    import os as _os
+    import time as _time
+    try:  # concurrency guard: a genuinely-alive foreign digest wins; a dead/recycled pid is overridden
+        st = _json.loads((paths.data_root() / ".digest_status.json").read_text(encoding="utf-8"))
+        if st.get("state") == "running" and int(st.get("pid") or 0) != _os.getpid() \
+                and digest_alive(st.get("pid")):
+            print(f"another digest is already running (pid {st['pid']}) — skipped")
+            return
+    except Exception:
+        pass
+    _digest_status_write({"state": "running", "started": _time.time(), "pid": _os.getpid(),
+                          "project": default_name or ""})
+    try:
+        lines = _digest_feedback_run(default_name)
+        _digest_status_write({"state": "done", "finished": _time.time(), "project": default_name or "",
+                              "summary": " | ".join(lines)[:500]})
+    except BaseException as e:  # incl. KeyboardInterrupt — never leave a stale "running"
+        _digest_status_write({"state": "error", "finished": _time.time(), "project": default_name or "",
+                              "error": str(e)[:300]})
+        raise
+
+
+def _digest_feedback_run(default_name=None):
     """THE one command behind “digest feedback”: pull the operator feedback the report pages
     filed on the server (zero clicks browser-side — the pages auto-sync), fold every blob into
     its project's substrate, classify it (confusion/correction/readability), auto-apply the safe
     fixes (confusion -> glossary), re-render + re-upload the touched reports, and only then
     delete the consumed blobs server-side. Corrections stay pending in the compass — a human
-    'this is wrong' needs judgment, not automation."""
+    'this is wrong' needs judgment, not automation. Returns the per-project summary lines."""
     import re as _re
     try:
         import push
@@ -2725,7 +2862,8 @@ def digest_feedback(default_name=None):
         by.setdefault(default_name, [])  # digest whatever landed locally for the named project too
     if not by:
         print("no pending feedback (server queue empty; no project named)")
-        return
+        return ["no pending feedback"]
+    out = []
     for proj, blobs in sorted(by.items()):
         counts = [0, 0, 0, 0]
         consumed = []  # only blobs whose fold SUCCEEDED — a failed fold is retried next run
@@ -2738,11 +2876,13 @@ def digest_feedback(default_name=None):
                 print(f"[digest] {proj}: bad blob kept for retry: {e}", file=sys.stderr)
         fsum, changed = _digest_and_apply(proj)
         if not consumed and not changed:
+            out.append(f"{proj}: nothing new")
             continue  # nothing folded, nothing digested/applied -> skip the codex regen entirely
         try:
             htmlpath, _s, _d = generate(proj)  # re-render + re-upload; one project's failure
         except Exception as e:                 # must not abort the rest of the batch
             print(f"[digest] {proj}: regenerate failed, blobs kept: {e}", file=sys.stderr)
+            out.append(f"{proj}: regenerate FAILED")
             continue
         for key in consumed:  # consume ONLY after fold + regen both succeeded
             try:
@@ -2750,9 +2890,11 @@ def digest_feedback(default_name=None):
                 push.delete_feedback(key)
             except Exception:
                 pass
-        print(f"{proj}: {len(consumed)}/{len(blobs)} blob(s) -> +{counts[0]} glossary, "
-              f"+{counts[1]} FAQ, +{counts[3]} note(s)"
-              + (f"; {fsum}" if fsum else "") + f"\n  -> {htmlpath}")
+        line = (f"{proj}: {len(consumed)}/{len(blobs)} blob(s) -> +{counts[0]} glossary, "
+                f"+{counts[1]} FAQ, +{counts[3]} note(s)" + (f"; {fsum}" if fsum else ""))
+        print(line + f"\n  -> {htmlpath}")
+        out.append(line)
+    return out
 
 
 def main():

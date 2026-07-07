@@ -207,6 +207,7 @@ LOGIN_HTML = ("<!doctype html><meta name='viewport' content='width=device-width,
 # --------------------------------------------------------------------------------------------
 import os as _os
 import tempfile as _tempfile
+import time as _time
 
 # project name -> filename component. Must be a bare token: starts alnum, then alnum/._-, <=64 chars.
 # No '/', so f"plan.{project}.jsonl" can never escape data_root (path-traversal guard).
@@ -339,6 +340,59 @@ def apply_edit(body):
                                 field, value, prev, persist_id=item_id)
 
 
+# ---- "Deal with all requests" (the report drawer's digest button) ---------------------------
+# POST /digest spawns `viz.py <project> --digest` DETACHED and answers 202 immediately — the relay
+# caps a request at ~110s while a real digest (LLM classify + re-render + re-upload) takes minutes.
+# GET /digest/status serves the tiny status file the digest run maintains (viz._digest_status_write),
+# which is how the report page's poll sees running -> done/error. The worker owner-gates both routes
+# before relaying; locally _auth + _allowed still apply like every other route.
+def _digest_status():
+    try:
+        st = json.loads((paths.data_root() / ".digest_status.json").read_text(encoding="utf-8"))
+    except Exception:
+        return {"state": "idle"}
+    # "running" but the pid is no longer a live `viz --digest` -> the run died between status writes
+    # (SIGKILL, crash) OR its pid was recycled to an unrelated process. viz.digest_alive keys off
+    # /proc cmdline (not a blind kill(pid,0)), so a recycled pid reads as dead and the button/CLI
+    # can start a fresh run instead of wedging on the stale "running" forever.
+    if st.get("state") == "running" and not viz.digest_alive(st.get("pid")):
+        return {"state": "error", "error": "digest process died", "started": st.get("started")}
+    return st
+
+
+_digest_lock = __import__("threading").Lock()  # ThreadingHTTPServer: one spawn decision at a time
+
+
+def start_digest(project):
+    """Kick off ONE background digest; idempotent — a second click while one runs just watches it.
+    The lock closes the check-then-act window between reading the status and Popen (two tabs /
+    a double-click land in two handler threads); the child's own wrapper guard covers the
+    cross-process race with a CLI --digest."""
+    with _digest_lock:
+        st = _digest_status()
+        if st.get("state") == "running":
+            return 202, {"ok": True, "state": "running", "already": True}
+        vz = ROOT / "viz.py"
+        env = dict(_os.environ)  # codex/kimi live in ~/.local/bin; a cron-spawned backend may lack it
+        lb = str(Path.home() / ".local" / "bin")
+        if lb not in env.get("PATH", "").split(":"):
+            env["PATH"] = lb + ":" + env.get("PATH", "/usr/local/bin:/usr/bin:/bin")
+        args = [sys.executable, str(vz)] + ([project] if project else []) + ["--digest"]
+        # log under data_root (owner-only 0755 dir, next to the status file) — NOT a predictable
+        # world-writable /tmp path a local user could pre-seed as a symlink; "wb" truncates so one
+        # run's log never grows without bound.
+        logp = paths.data_root() / ".digest.log"
+        with open(logp, "wb") as log:
+            p = subprocess.Popen(args, stdout=log, stderr=log, stdin=subprocess.DEVNULL,
+                                 start_new_session=True, env=env, cwd=str(ROOT))
+        # mark running BEFORE answering 202 — else the first poll could still read the PREVIOUS
+        # run's "done" (the child takes ~a second to import viz and write its own "running")
+        _atomic_write(paths.data_root() / ".digest_status.json",
+                      json.dumps({"state": "running", "started": _time.time(), "pid": p.pid,
+                                  "project": project or "", "via": "button"}))
+        return 202, {"ok": True, "state": "running", "pid": p.pid}
+
+
 class Handler(SimpleHTTPRequestHandler):
     def log_message(self, *a):
         pass
@@ -390,6 +444,22 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_header("location", dest)
             self.end_headers()
             return
+        # digest status poll (the drawer's "Deal with all requests" button). Accept the flat
+        # /digest/status and the namespaced /<email>/digest/status the worker may relay. JSON
+        # always — a fetch caller must never get the login page to parse.
+        p0 = self.path.split("?", 1)[0].rstrip("/")
+        if re.match(r"^(?:/[^/]+)?/digest/status$", p0):
+            user = self._auth()
+            if not user:
+                return self._send_json(403, {"error": "sign in"})
+            st = _digest_status()
+            # The status file is GLOBAL (one digest run at a time, any project). A project-scoped
+            # invited user (report_users.jsonl projects:[…], not the '*' admin/relay wildcard) must
+            # not learn the project name / pid / per-project summary of a digest they weren't granted.
+            # Relayed (worker-authenticated) callers carry '*', so the owner's own poll is unaffected.
+            if user.get("projects") != "*" and (st.get("project") or "") not in (user.get("projects") or []):
+                st = {"state": st.get("state", "idle")}
+            return self._send_json(200, st)
         user = self._auth()
         if not user:
             self._login_page()
@@ -427,6 +497,20 @@ class Handler(SimpleHTTPRequestHandler):
                 if not self._allowed(user, body.get("project", "")):
                     return self._send_json(403, {"error": "editing is owner-only"})
                 code, payload = apply_edit(body)
+                return self._send_json(code, payload)
+            except Exception as e:
+                return self._send_json(400, {"error": str(e)[:300]})
+        # "Deal with all requests" — spawn the background digest. Flat /digest and the namespaced
+        # /<email>/digest, mirroring /edit's two relayed shapes (the worker owner-gated them).
+        if path == "/digest" or re.match(r"^/[^/]+/digest$", path):
+            try:
+                body = json.loads(self.rfile.read(int(self.headers.get("content-length", 0))) or b"{}")
+                project = body.get("project") or ""
+                if project and (not isinstance(project, str) or not SAFE_NAME.match(project)):
+                    return self._send_json(400, {"error": "bad project"})
+                if not self._allowed(user, project):
+                    return self._send_json(403, {"error": "digest is owner-only"})
+                code, payload = start_digest(project)
                 return self._send_json(code, payload)
             except Exception as e:
                 return self._send_json(400, {"error": str(e)[:300]})

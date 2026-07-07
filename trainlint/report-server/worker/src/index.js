@@ -453,7 +453,14 @@ export default {
       // allowed only when this IS the caller's own ns. (Returns the 403 the editor UI expects.)
       // /digest (the "Deal with all requests" button) is owner-only for the same reason PLUS cost:
       // it spawns an LLM pass on the operator's machine — a granted viewer must not spend that.
-      const rSub = rm[2] || "/";
+      //
+      // CANONICALIZE the sub-path before the owner-only string compares. The backend rstrips
+      // trailing slashes (chat_backend do_GET/do_POST), so "/edit/" and "/digest/" reach the SAME
+      // mutating handlers as "/edit" and "/digest" — but a naive exact compare here would see
+      // "/edit/" !== "/edit" and skip the owner-gate, letting an admin / accepted-share viewer write
+      // to (or spend an LLM pass on) another operator's ns. Collapse trailing slashes so the gate
+      // fires on every alias. (This also closes the same latent hole on the pre-existing /edit gate.)
+      const rSub = (rm[2] || "/").replace(/\/+$/, "") || "/";
       if (rSub === "/edit" && targetNs !== ns) return text("editing is owner-only", 403);
       if ((rSub === "/digest" || rSub === "/digest/status") && targetNs !== ns)
         return text("digest is owner-only", 403);

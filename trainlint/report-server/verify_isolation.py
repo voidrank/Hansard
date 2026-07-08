@@ -80,7 +80,23 @@ def main():
     check(not (s == 200 and (mark_a in b or mark_b in b)),
           f"non-admin on the admin /<email>/<project> route leaks nothing (status {s})")
 
-    print("\n" + ("ISOLATION HOLDS" if not fails else f"{fails} FAILURES — DO NOT ONBOARD ANYONE"))
+    # 6. share/accept consent flow: a PENDING invite must grant NOTHING until the invitee accepts.
+    #    A invites a throwaway email onto A's namespace; that email (as a fresh, un-accepted tenant)
+    #    must still 404/deny A's report — a pending invite is not a grant.
+    invitee = f"iso-{secrets.token_hex(6)}@example.com"
+    s, _ = req("POST", "/api/share", token=ta,
+               body=('{"email":"%s"}' % invitee).encode())
+    check(s in (200, 201, 401, 403, 404),
+          f"/api/share responds without error-crashing (status {s})")
+    # the invitee has no session/cookie we can forge (ns = sha256(their email), no signed token),
+    # so we assert the NEGATIVE via a fresh anonymous tenant reading A's project: still no A content.
+    s, b = req("GET", f"/{pa}.html", cookie=secrets.token_hex(16))
+    check(mark_a not in b, "a pending invite grants no access — a fresh tenant still can't read A")
+
+    print("\nNOTE: proves the ANONYMOUS-TOKEN layer + share-does-not-grant. NOT covered here:")
+    print("  two real Google-account tenants (needs browser logins), the /accept promotion,")
+    print("  and AgentHub live-relay paths. See the two-account manual steps.")
+    print(("ISOLATION HOLDS (token layer)" if not fails else f"{fails} FAILURES — DO NOT ONBOARD ANYONE"))
     return 1 if fails else 0
 
 

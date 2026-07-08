@@ -554,6 +554,10 @@ details.dec>summary::-webkit-details-marker{display:none}
 .ancbar .anch-red{color:#b91c1c}
 .ancbar-go{float:right;font-weight:700;color:#2563eb}
 .anccode{max-height:340px;overflow:auto}
+.anccode .cl{display:block;white-space:pre;min-height:1.55em}
+.anccode .cl::before{counter-increment:acl;content:counter(acl);display:inline-block;width:3em;
+  margin-right:11px;padding-right:7px;text-align:right;color:#94a3b8;border-right:1px solid #e2e8f0;
+  user-select:none;-webkit-user-select:none}
 .anccmd{font-size:10.5px;color:#94a3b8;margin-top:3px}
 .anccmd code{user-select:all;background:#f8fafc;border-radius:4px;padding:0 4px}
 .anch-stub{font-size:11.5px;color:#b91c1c;margin:2px 0 9px 24px}
@@ -2208,8 +2212,17 @@ def render_html(name, goal, bar, pl, nodes, knowledge, kinds, id2phase, phase_or
                     note = f" — {_e(a['note'])}" if a.get("note") else ""
                     cmd = (f"<div class='anccmd'>reproduce: <code>{_e(a['cmd'])}</code></div>"
                            if a.get("cmd") else "")
-                    code_html = (f"<pre class='excode anccode'>{_e(a['code'])}</pre>"
-                                 if a.get("code") else "")
+                    # line numbers live in a CSS counter gutter (non-selectable), NOT baked into
+                    # the text — so selecting/copying the slab yields clean code. counter-reset
+                    # seeds the first visible line number (code_start - 1, incremented per row).
+                    if a.get("code"):
+                        _rows = "".join(f"<span class='cl'>{_e(l)}</span>\n"
+                                        for l in a["code"].split("\n"))
+                        code_html = (f"<pre class='excode anccode' "
+                                     f"style='counter-reset:acl {a.get('code_start', 1) - 1}'>"
+                                     f"{_rows}</pre>")
+                    else:
+                        code_html = ""
                     # the click-through: open EXACTLY these lines at EXACTLY this commit on the
                     # repo's web UI — the "take me to the code" button this whole feature is for
                     link = (f"<a class='anclink' href='{_e(a['href'])}' target='_blank' "
@@ -2539,7 +2552,7 @@ def _git_out(repo, *args, timeout=10):
 def _slice(text, lines):
     """The FULL [start,end] 1-based line slice of text (whole text when lines is falsy) — never
     truncated here: drift detection must compare complete ranges (a change past a display cap is
-    still drift). Display truncation happens in _numbered only."""
+    still drift). Display truncation happens in _cap_rows only."""
     rows = text.splitlines()
     lo, hi = (lines[0], lines[1]) if lines else (1, len(rows))
     lo = max(1, lo)
@@ -2548,21 +2561,20 @@ def _slice(text, lines):
     return picked, lo, clipped
 
 
-def _numbered(rows, start):
-    """Line-numbered display text, capped at _ANCH_MAX_LINES lines / _ANCH_MAX_BYTES bytes —
-    the caps are display-only; callers compare the uncapped rows for drift."""
+def _cap_rows(rows):
+    """(display_rows, dropped_count) — the RAW code lines, capped at _ANCH_MAX_LINES lines /
+    _ANCH_MAX_BYTES bytes. No line-number gutter is baked in: the display adds it via a CSS
+    counter (non-selectable), so copying the slab yields clean code and the chatbot grounds on
+    clean code. dropped_count > 0 => truncated (caller notes it in the caption)."""
     out, size = [], 0
     for i, ln in enumerate(rows):
         if i >= _ANCH_MAX_LINES:
-            out.append(f"    … │ ({len(rows) - i} more lines — line cap; use the command below)")
-            break
-        s = f"{start + i:>5} │ {ln}"
-        size += len(s) + 1
+            return out, len(rows) - i
+        size += len(ln) + 1
         if size > _ANCH_MAX_BYTES:
-            out.append("    … │ (snippet byte cap reached — use the command below)")
-            break
-        out.append(s)
-    return "\n".join(out)
+            return out, len(rows) - i
+        out.append(ln)
+    return out, 0
 
 
 def _repo_web(root, cache):
@@ -2620,14 +2632,20 @@ def _resolve_one_anchor(s, home, roots):
         except Exception:
             working = ""
 
+    def _clip(rows):
+        """(code_str, start_line_field_suffix) -> caption suffix for a truncated slab."""
+        disp, dropped = _cap_rows(rows)
+        return "\n".join(disp), (f" · +{dropped} more lines (cap) — use the command below"
+                                 if dropped else "")
+
     if not sha:  # file-only anchor (non-git dir, or not committed when recorded)
         if not working:
             return {"loc": loc, "kind": "missing", "cap": f"file not found: {fs_path}",
-                    "code": "", "diff": "", "cmd": "", "href": "", "note": note}
-        rows, lo, clipped = _slice(working, lines)
-        cap = "file-only (no commit pin) — showing the current working copy" \
-              + (" · clipped" if clipped else "")
-        return {"loc": loc, "kind": "fileonly", "cap": cap, "code": _numbered(rows, lo),
+                    "code": "", "code_start": 1, "diff": "", "cmd": "", "href": "", "note": note}
+        rows, lo, _ = _slice(working, lines)
+        code, more = _clip(rows)
+        cap = "file-only (no commit pin) — showing the current working copy" + more
+        return {"loc": loc, "kind": "fileonly", "cap": cap, "code": code, "code_start": lo,
                 "diff": "", "cmd": f"sed -n '{lines[0]},{lines[1]}p' {fs_path}" if lines else str(fs_path),
                 "href": "", "note": note}
 
@@ -2642,29 +2660,29 @@ def _resolve_one_anchor(s, home, roots):
         if not working:
             return {"loc": loc, "kind": "missing",
                     "cap": f"anchor commit {sha} unreachable AND no working copy at {fs_path}",
-                    "code": "", "diff": "", "cmd": "", "href": "", "note": note}
-        rows, lo, clipped = _slice(working, lines)
+                    "code": "", "code_start": 1, "diff": "", "cmd": "", "href": "", "note": note}
+        rows, lo, _ = _slice(working, lines)
+        code, more = _clip(rows)
         return {"loc": loc, "kind": "unreachable",
-                "cap": f"⚠ anchor commit {sha} unreachable — showing CURRENT working copy instead"
-                       + (" · clipped" if clipped else ""),
-                "code": _numbered(rows, lo), "diff": "",
+                "cap": f"⚠ anchor commit {sha} unreachable — showing CURRENT working copy instead" + more,
+                "code": code, "code_start": lo, "diff": "",
                 "cmd": f"git -C {root} show {sha}:{rel}", "href": href, "note": note}
 
-    rows, lo, clipped = _slice(pinned, lines)
-    code = _numbered(rows, lo)
+    rows, lo, _ = _slice(pinned, lines)
+    code, more = _clip(rows)
     cmd = f"git -C {root} show {sha}:{rel}" + (f" | sed -n '{lines[0]},{lines[1]}p'" if lines else "")
     wrows, _, _ = _slice(working, lines) if working else ([], lo, False)
     if working and wrows != rows:  # the SAME range moved on -> pinned stays canon, diff shows drift
         dif = "\n".join(difflib.unified_diff(rows, wrows, f"{rel}@{sha} (reviewed)",
                                              f"{rel} (working tree now)", lineterm=""))[:_ANCH_MAX_BYTES]
         return {"loc": loc, "kind": "drifted",
-                "cap": f"pinned at {sha}" + (" · clipped" if clipped else "")
+                "cap": f"pinned at {sha}" + more
                        + " · ⚠ these lines have CHANGED since — pinned version shown, diff below",
-                "code": code, "diff": dif, "cmd": cmd, "href": href, "note": note}
+                "code": code, "code_start": lo, "diff": dif, "cmd": cmd, "href": href, "note": note}
     cap = f"pinned at {sha} · unchanged in working tree" if working else \
           f"pinned at {sha} · (file gone from working tree)"
-    return {"loc": loc, "kind": "pinned", "cap": cap + (" · clipped" if clipped else ""),
-            "code": code, "diff": "", "cmd": cmd, "href": href, "note": note}
+    return {"loc": loc, "kind": "pinned", "cap": cap + more,
+            "code": code, "code_start": lo, "diff": "", "cmd": cmd, "href": href, "note": note}
 
 
 def _resolve_anchors(pl, name):

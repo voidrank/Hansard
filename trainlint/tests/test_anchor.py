@@ -120,8 +120,8 @@ check(r["kind"] == "drifted" and "line2" in r["code"] and "CHANGED" in r["diff"]
 subprocess.run(["git", "-C", str(repo), "checkout", "-q", "--", "mod.py"], check=True)
 r = viz._resolve_one_anchor({"file": "mod.py", "lines": [2, 4], "commit": sha, "repo": str(repo)},
                             str(repo), {})
-check(r["kind"] == "pinned" and "    2 │ line2" in r["code"],
-      "resolve: unchanged file -> pinned, numbered snippet")
+check(r["kind"] == "pinned" and r["code"].split("\n")[0] == "line2" and r["code_start"] == 2,
+      "resolve: unchanged -> pinned; code is CLEAN (no gutter baked in), code_start pins the number")
 
 r = viz._resolve_one_anchor({"file": "mod.py", "lines": [1, 2], "commit": "deadbeef1234",
                              "repo": str(repo)}, str(repo), {})
@@ -140,14 +140,14 @@ r = viz._resolve_one_anchor({"file": str(loose), "lines": [1, 2]}, str(nogit), {
 check(r["kind"] == "fileonly" and "working copy" in r["cap"],
       "resolve: file-only (non-git) -> current copy, captioned as unpinned")
 
-# budget: _slice keeps the FULL range (drift compares it); _numbered caps the display
+# budget: _slice keeps the FULL range (drift compares it); _cap_rows caps the display
 big = "\n".join(f"x{i}" for i in range(500))
 rows, lo, clipped = viz._slice(big, [1, 500])
 check(clipped and len(rows) == 500,
       "budget: _slice returns the full range (uncut) and flags that display will clip")
-shown = viz._numbered(rows, 1)
-check(len(shown.splitlines()) <= viz._ANCH_MAX_LINES + 1 and "more lines" in shown,
-      f"budget: _numbered caps display at {viz._ANCH_MAX_LINES} lines with an honest marker")
+disp, dropped = viz._cap_rows(rows)
+check(len(disp) == viz._ANCH_MAX_LINES and dropped == 500 - viz._ANCH_MAX_LINES,
+      f"budget: _cap_rows caps display at {viz._ANCH_MAX_LINES} lines and reports the drop count")
 
 # drift past the display cap must still be DETECTED (review finding: truncation-blind drift)
 longf = repo / "long.py"

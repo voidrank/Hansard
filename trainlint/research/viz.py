@@ -2215,12 +2215,19 @@ def render_html(name, goal, bar, pl, nodes, knowledge, kinds, id2phase, phase_or
                     # line numbers live in a CSS counter gutter (non-selectable), NOT baked into
                     # the text — so selecting/copying the slab yields clean code. counter-reset
                     # seeds the first visible line number (code_start - 1, incremented per row).
+                    # A LONG slab folds shut by default (the caption + 'open this code' link above
+                    # stay visible); short ones render open so the code is there at a glance.
                     if a.get("code"):
-                        _rows = "".join(f"<span class='cl'>{_e(l)}</span>\n"
-                                        for l in a["code"].split("\n"))
-                        code_html = (f"<pre class='excode anccode' "
-                                     f"style='counter-reset:acl {a.get('code_start', 1) - 1}'>"
-                                     f"{_rows}</pre>")
+                        _clines = a["code"].split("\n")
+                        _pre = ("<pre class='excode anccode' "
+                                f"style='counter-reset:acl {a.get('code_start', 1) - 1}'>"
+                                + "".join(f"<span class='cl'>{_e(l)}</span>\n" for l in _clines)
+                                + "</pre>")
+                        if len(_clines) > _ANCH_FOLD_LINES:
+                            code_html = (f"<details class='draw'><summary>show the {len(_clines)} "
+                                         f"lines</summary>{_pre}</details>")
+                        else:
+                            code_html = _pre
                     else:
                         code_html = ""
                     # the click-through: open EXACTLY these lines at EXACTLY this commit on the
@@ -2537,6 +2544,7 @@ def stdout_summary(name, goal, bar, pl, nodes, knowledge, htmlpath):
 _ANCH_MAX_LINES = 120          # per-snippet line cap
 _ANCH_MAX_BYTES = 8_000        # per-snippet byte cap
 _ANCH_TOTAL_BYTES = 1_500_000  # whole-report code budget (worker upload caps the blob at ~5MB)
+_ANCH_FOLD_LINES = 24          # a slab longer than this folds shut by default (caption stays visible)
 
 
 def _git_out(repo, *args, timeout=10):

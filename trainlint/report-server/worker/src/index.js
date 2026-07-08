@@ -683,7 +683,7 @@ export default {
           : "";
 
         return html(
-          `<!doctype html><meta charset=utf-8><title>trainlint · admin</title>` +
+          `<!doctype html><meta charset=utf-8><title>hansard · admin</title>` +
           `<style>` +
           `body{font:15px/1.5 system-ui,sans-serif;max-width:820px;margin:40px auto;padding:0 16px;background:#f9fafb;color:#111827}` +
           `a{color:#2563eb;text-decoration:none}a:hover{text-decoration:underline}` +
@@ -762,7 +762,7 @@ export default {
         : `<div class=tok><b>You're signed in.</b> Your local plugin already holds your upload token — reports it renders appear here automatically. The token is a machine secret and is never displayed.</div>`;
 
       return html(
-        `<!doctype html><meta charset=utf-8><title>trainlint reports</title>` +
+        `<!doctype html><meta charset=utf-8><title>hansard reports</title>` +
         `<style>body{font:15px/1.5 system-ui,sans-serif;max-width:760px;margin:40px auto;padding:0 16px;background:#f9fafb;color:#111827}` +
         `a{color:#2563eb;text-decoration:none}a:hover{text-decoration:underline}` +
         `code{background:#f3f4f6;padding:2px 6px;border-radius:4px;word-break:break-all;font-family:monospace}` +
@@ -770,7 +770,7 @@ export default {
         `.header{display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #e5e7eb;padding-bottom:12px;margin-bottom:24px}` +
         `.btn-logout{background:#ef4444;color:#fff;padding:4px 10px;border-radius:6px;font-size:13px;font-weight:500;text-decoration:none}</style>` +
         `<div class="header">` +
-        `  <h1>Your trainlint reports</h1>` +
+        `  <h1>Your hansard reports</h1>` +
         `  <a href="/logout" class="btn-logout">Logout</a>` +
         `</div>` +
         `<p>Signed in as <b>${userDisplay}</b>.</p><ul>${links}</ul>` +
@@ -865,7 +865,7 @@ async function relayToAgent(nsTarget, relPath, request, env) {
 }
 
 function loginPage(error = "") {
-  return `<!doctype html><meta charset=utf-8><title>Login - trainlint reports</title>` +
+  return `<!doctype html><meta charset=utf-8><title>Login - hansard</title>` +
     `<style>body{font:15px/1.5 system-ui,sans-serif;background:#f3f4f6;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}` +
     `.card{background:#fff;padding:32px;border-radius:12px;box-shadow:0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06);width:100%;max-width:380px}` +
     `h2{margin-top:0;margin-bottom:4px;font-size:22px;font-weight:700;color:#111827;text-align:center}` +
@@ -875,8 +875,8 @@ function loginPage(error = "") {
     `.error{color:#ef4444;font-size:13px;margin-bottom:16px;background:#fef2f2;border:1px solid #fca5a5;padding:10px;border-radius:6px}` +
     `.notice{font-size:12px;color:#9ca3af;text-align:center;line-height:1.4;margin-top:24px;border-top:1px solid #f3f4f6;padding-top:16px}</style>` +
     `<div class="card">` +
-    `  <h2>Trainlint Portal</h2>` +
-    `  <p>Secure Multi-Tenant Report Hosting</p>` +
+    `  <h2>Hansard</h2>` +
+    `  <p>The work, on the record</p>` +
     `  ${error ? `<div class="error">${error}</div>` : ""}` +
     `  ` +
     `  <a href="/auth/google" class="btn-google">` +

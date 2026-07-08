@@ -9,8 +9,11 @@ file:line) like a developer picking up a ticket, and returns a structured verdic
 full agent transcript is saved as the "development record".
 
 SAFETY MODEL (matches the operator's chosen design — read-only agents + a deterministic applier):
-  * Agents run `claude -p --allowedTools "Read Grep Glob"` — those three tools CANNOT write, so an
-    agent physically cannot edit code or substrate; its blast radius is read + return-text only.
+  * Agents run `claude -p --allowedTools "Read Grep Glob" --disallowedTools "Bash Write Edit
+    NotebookEdit"`. The allowed three cannot write; the disallow removes Bash too (which is
+    otherwise auto-approved for read-only shell and COULD write) — so there is NO write path at all,
+    verified: the agent reports "no file-writing tool available". Its blast radius is read + return-
+    text only. (No --dangerously-skip-permissions.)
   * The real writes are done HERE, serially, by deterministic Python (never by a racing agent):
       - confusion  -> auto-apply the additive glossary entries it proposed, deduped by term.
       - correction -> NEVER auto-applied; recorded pending (kind=correction) with the agent's
@@ -43,7 +46,13 @@ import paths      # noqa: E402
 import feedback   # noqa: E402  — reuse collect_new / _feedback_path / _merge
 
 CLAUDE = os.environ.get("TRAINLINT_CLAUDE_BIN", "claude")
-READ_ONLY_TOOLS = ["Read", "Grep", "Glob"]  # cannot write — hard read-only enforcement
+# Read/Grep/Glob cannot write. We ALSO --disallow Bash/Write/Edit: without --disallow, Bash stays
+# available (Claude Code auto-approves read-only shell like `ls`/`sed -n`), and Bash CAN write — so
+# the read-only guarantee would rest on a read-vs-write heuristic, not on the absence of a write
+# path. Disallowing them removes the escape hatch entirely (verified: the agent reports "no
+# file-writing tool available"). Investigation quality is unaffected — Read/Grep/Glob cover it.
+READ_ONLY_TOOLS = ["Read", "Grep", "Glob"]
+DENY_TOOLS = ["Bash", "Write", "Edit", "NotebookEdit"]
 PER_AGENT_TIMEOUT = int(os.environ.get("TRAINLINT_AGENT_TIMEOUT", "600"))  # seconds
 _status_lock = threading.Lock()
 
@@ -164,7 +173,8 @@ def _run_one(project, item, sub_dirs):
     rec.mkdir(parents=True, exist_ok=True)
     prompt = _agent_prompt(item, project, sub_dirs, str(paths.data_root()))
     cmd = [CLAUDE, "-p", prompt, "--output-format", "stream-json", "--verbose",
-           "--allowedTools", *READ_ONLY_TOOLS, "--add-dir", str(paths.data_root())]
+           "--allowedTools", *READ_ONLY_TOOLS, "--disallowedTools", *DENY_TOOLS,
+           "--add-dir", str(paths.data_root())]
     for d in sub_dirs:
         cmd += ["--add-dir", d]
     model = os.environ.get("TRAINLINT_AGENT_MODEL")

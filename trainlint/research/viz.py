@@ -616,6 +616,8 @@ abbr.gl-term{text-decoration:underline dotted #94a3b8;text-underline-offset:2px;
 .fb-act{color:#166534;margin-top:2px;line-height:1.45}
 .fb-row.done{opacity:.55}
 .fb-done{color:#16a34a;font-weight:700;font-size:11px;margin-top:2px}
+.fb-wl{margin-top:4px}.fb-wl summary{cursor:pointer;color:#4f46e5;font-size:11px;font-weight:600}
+.fb-wl pre{white-space:pre-wrap;background:#f8fafc;border:1px solid var(--line,#eef2f7);border-radius:6px;padding:7px 9px;font-size:11px;line-height:1.4;margin:4px 0 2px;overflow-x:auto}
 """
 
 
@@ -1255,7 +1257,8 @@ ANNOT_JS = r"""
           }else if(j.state==='error'){
             endDigest('✗ digest failed: '+esc(String(j.error||'unknown')).slice(0,200));
           }else{
-            setDst('🤖 digesting on the operator machine… '+((n+1)*5)+'s (LLM pass + re-render can take a few minutes)');
+            var prog=(j.total?(' — agent '+(j.done||0)+'/'+j.total):'');  // agentic: per-feedback agents
+            setDst('🤖 digesting on the operator machine…'+prog+' ('+((n+1)*5)+'s; per-feedback agents can take a few minutes)');
             pollDigest(n+1);
           }
         }).catch(function(){pollDigest(n+1);});
@@ -1910,12 +1913,28 @@ def feedback_section_html(name):
             done = bool(e.get("resolved"))
             kinds[k] = kinds.get(k, 0) + 1
             act = str(e.get("action") or e.get("insight") or "")
+            # agentic digest extras: a per-feedback Claude Code agent verified the item against the
+            # real code and left a worklog. Surface its verdict (esp. for corrections it fixed or
+            # REFUSED) + the concrete proposal, so the loop is visible and reviewable in the report.
+            extra = ""
+            if e.get("agentic"):
+                verdict = str(e.get("claim_verdict") or "")
+                if k == "correction" and verdict in ("operator_right", "operator_wrong"):
+                    lbl = ("operator was RIGHT — fix proposed" if verdict == "operator_right"
+                           else "operator was WRONG — agent refused, with evidence")
+                    vcol = "#b91c1c" if verdict == "operator_right" else "#059669"
+                    extra += f"<div class='fb-act' style='color:{vcol};font-weight:600'>🤖 {_e(lbl)}</div>"
+                prop = str(e.get("proposal") or "")
+                if prop:
+                    extra += ("<details class='fb-wl'><summary>🤖 agent worklog / proposal</summary>"
+                              f"<pre>{_e(_trunc(prop, 1600))}</pre></details>")
             rows.append(
                 f"<div class='fb-row{' done' if done else ''}'>"
                 f"<span class='fb-kind' style='background:{col.get(k, '#64748b')}'>{_e(k)}</span>"
                 f"<div><div class='fb-note'>“{_e(_trunc(str(e.get('quote') or ''), 90))}” — "
                 f"{_ec(str(e.get('note') or ''))}</div>"
                 + (f"<div class='fb-act'>→ {_ec(act)}</div>" if act else "")
+                + extra
                 + ("<div class='fb-done'>✓ addressed</div>" if done else "")
                 + "</div></div>")
         head = " · ".join(f"{v} {k}" for k, v in sorted(kinds.items()))
@@ -3116,7 +3135,7 @@ def digest_alive(pid):
         if pid <= 0:
             return False
         cl = Path(f"/proc/{pid}/cmdline").read_bytes().replace(b"\x00", b" ")
-        return b"--digest" in cl and b"viz" in cl
+        return (b"--digest" in cl and b"viz" in cl) or (b"feedback_agent" in cl)  # classic OR agentic
     except Exception:
         return False
 

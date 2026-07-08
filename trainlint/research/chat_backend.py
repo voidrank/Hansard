@@ -8,6 +8,7 @@ learning loop closes on this one box. Serves the rendered HTML statically too.
 
 Run:  python3 chat_backend.py <viz_dir> <port>   (serve.ensure launches it detached)
 """
+import datetime as _dt
 import json
 import re
 import subprocess
@@ -125,8 +126,15 @@ def answer(project, question, decision_id=None, history=None, provider=None, foc
                         f.write(json.dumps({"term": t["term"], "plain": t.get("plain", ""),
                                             "why": t.get("why", ""), "dec": decision_id}, ensure_ascii=False) + "\n")
             cp = paths.resolve(f"clarify.{project}.jsonl")
+            # persist focus_text (+ ts) too — the digest reads `focus` as the item's quote
+            # (feedback.py:86); dropping it made surprise-launched chats (dec=null) digest to an
+            # EMPTY quote. Matches the {dec,q,a,ts,focus?} schema + the absorb path in viz._fold_blob.
+            row = {"q": question, "a": clean, "dec": decision_id,
+                   "ts": _dt.datetime.now(_dt.timezone.utc).isoformat(timespec="seconds")}
+            if focus_text:  # WHAT the question was about (highlighted surprise/card text)
+                row["focus"] = str(focus_text)[:300]
             with cp.open("a", encoding="utf-8") as f:
-                f.write(json.dumps({"q": question, "a": clean, "dec": decision_id}, ensure_ascii=False) + "\n")
+                f.write(json.dumps(row, ensure_ascii=False) + "\n")
         except Exception:
             pass
     return clean
@@ -372,12 +380,20 @@ def start_digest(project):
         st = _digest_status()
         if st.get("state") == "running":
             return 202, {"ok": True, "state": "running", "already": True}
-        vz = ROOT / "viz.py"
-        env = dict(_os.environ)  # codex/kimi live in ~/.local/bin; a cron-spawned backend may lack it
+        env = dict(_os.environ)  # codex/kimi/claude live in ~/.local/bin; a cron-spawned backend may lack it
         lb = str(Path.home() / ".local" / "bin")
         if lb not in env.get("PATH", "").split(":"):
             env["PATH"] = lb + ":" + env.get("PATH", "/usr/local/bin:/usr/bin:/bin")
-        args = [sys.executable, str(vz)] + ([project] if project else []) + ["--digest"]
+        # Two digest engines. AGENTIC (default): one read-only Claude Code agent per feedback item
+        # (feedback_agent.py) — investigates the real code, proposes; a deterministic serial applier
+        # lands the safe part. Needs a specific project. CLASSIC: the cheap one-shot codex classify
+        # (viz.py --digest), also the fallback when no project is named. TRAINLINT_DIGEST_MODE=classic
+        # forces the cheap path.
+        mode = env.get("TRAINLINT_DIGEST_MODE", "agentic").strip().lower()
+        if mode == "agentic" and project:
+            args = [sys.executable, str(ROOT / "feedback_agent.py"), project]
+        else:
+            args = [sys.executable, str(ROOT / "viz.py")] + ([project] if project else []) + ["--digest"]
         # log under data_root (owner-only 0755 dir, next to the status file) — NOT a predictable
         # world-writable /tmp path a local user could pre-seed as a symlink; "wb" truncates so one
         # run's log never grows without bound.

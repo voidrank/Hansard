@@ -2632,9 +2632,11 @@ def render_html(name, goal, bar, pl, nodes, knowledge, kinds, id2phase, phase_or
         ("sec-flow", "🔀 Data &amp; pipeline", "".join(p for p in flow_sec if p)),
         ("sec-timeline", "📅 Timeline", "".join(tl_sec)),
         ("sec-decisions", "🧭 Decisions", "".join(dec_sec)),
+        # 🎛 Agents IS the unified "working sessions" surface (each request/task = one agent run).
+        # The old 🔧 To-process + 📋 Logbook tabs were a redundant second model of the same thing
+        # (operator: "to-process 和 logbook 属于重复的概念，应该就是 working sessions") — removed.
+        # Their render fns (toprocess_section_html / logbook_section_html) are kept but un-wired.
         ("sec-agents", "🎛 Agents", agents_section_html(name)),
-        ("sec-toprocess", "🔧 To process", toprocess_section_html(name)),  # pending request inbox (adopt/dismiss)
-        ("sec-logbook", "📋 Logbook", logbook_section_html(name)),  # agentic-digest request handling record
     ) if h.strip()]
     if len(secs) > 1:
         H.append("<div class='rnav'>" + "".join(

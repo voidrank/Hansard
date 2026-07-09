@@ -16,6 +16,9 @@ tells the agent to invoke /hansard:execute-and-report again. That is the loop.
 
 SAFETY (this never runs away):
   * OPT-IN. Off unless TRAINLINT_AUTOPILOT is truthy. Default = no autopilot.
+  * PLAN-GATED. The session must resolve to a project that HAS a plan.<project>.jsonl
+    (session lock / cwd inference — session-project-lock). An unbound session, or a
+    project with no plan, gets NO auto-continue: there is nothing to drive.
   * CAPPED. At most TRAINLINT_AUTOPILOT_MAX (default 8) CONSECUTIVE auto-continues
     per session; then it lets the turn stop. A real human prompt / a long idle gap
     resets the counter.
@@ -111,19 +114,43 @@ def _is_clean_plan_or_execute_report(text):
                 or re.search(r"\bviz[\w./-]*\.html\b", text, re.I))
 
 
-def _project_state():
-    """Compact human-readable snapshot (goal + phase map) for the gate to read."""
+def _session_plan(data):
+    """(plan_path, project) for THIS session, or (None, '') when the session is unbound or its
+    project has no plan.<project>.jsonl in data_root. session-project-lock: resolve from the hook
+    payload (env override, session lock, cwd inference) — never a machine-wide pointer. No plan
+    means execute-and-report has nothing to drive, so the loop must NOT be triggered at all."""
+    try:
+        sys.path.insert(0, str(_RESEARCH))
+        import paths
+        proj = os.environ.get("HARNESS_PROJECT", "").strip()
+        if not proj:
+            sid = str(data.get("session_id") or "").strip()
+            rec = paths.read_session_lock(sid) if sid else None
+            proj = (rec or {}).get("project") or ""
+        if not proj:
+            proj = paths._infer_project_from_cwd(str(data.get("cwd") or "") or os.getcwd()) or ""
+        if not proj:
+            return (None, "")
+        p = paths.data_root() / f"plan.{proj}.jsonl"
+        return (p if p.exists() else None, proj)
+    except Exception:
+        return (None, "")
+
+
+def _project_state(proj):
+    """Compact human-readable snapshot (goal + phase map) of THIS session's project for the gate
+    to read — from data_root, not the versioned plugin dir."""
     goal = ""
     try:
-        for p in _RESEARCH.glob("goal.*.txt"):
-            goal = p.read_text(encoding="utf-8").strip()
-            break
+        sys.path.insert(0, str(_RESEARCH))
+        import paths
+        goal = (paths.data_root() / f"goal.{proj}.txt").read_text(encoding="utf-8").strip()
     except Exception:
         pass
     plan_map = ""
     try:
         plan_map = subprocess.run(
-            [sys.executable, str(_RESEARCH / "plan.py")],
+            [sys.executable, str(_RESEARCH / "plan.py"), proj],
             capture_output=True, text=True, timeout=10).stdout.strip()
     except Exception:
         pass
@@ -179,6 +206,9 @@ def check(data):
     try:
         if not _enabled():
             return None
+        plan_path, proj = _session_plan(data)
+        if plan_path is None:
+            return None  # unbound session / project without a plan — nothing to drive, stay silent
 
         report = _last_assistant_text(data.get("transcript_path", ""))
         st = _load_state()
@@ -203,7 +233,7 @@ def check(data):
             _save_state(st)
             return None
 
-        goal, plan_map = _project_state()
+        goal, plan_map = _project_state(proj)
         decision, reason = _gate(goal, plan_map, report)
         if decision != "CONTINUE":
             st[sid] = {"count": 0, "ts": now}  # PAUSE / ambiguous -> reset streak, let it stop

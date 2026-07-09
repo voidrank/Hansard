@@ -18,3 +18,4 @@ wrangler.log
 # local render artifacts — never in git
 hansard/research/decks/
 hansard/research/viz/
+hansard/report-server/worker/.dev.vars

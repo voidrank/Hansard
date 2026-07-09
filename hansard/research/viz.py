@@ -91,11 +91,11 @@ def _ec(s):
 
 
 def stable_line_id(kind, obj):
-    """Deterministic id for a surprises/focus jsonl ROW. MUST stay byte-identical to
+    """Deterministic id for a focus jsonl ROW. MUST stay byte-identical to
     chat_backend.stable_line_id (copied verbatim) so the id baked into data-e-id matches the id the
     /edit backend recomputes to locate the line. Contract:
-        if the row already carries a non-empty "id" (focus rows do, and the backend PINS one into a
-            surprise row on its first edit) -> that id wins, unchanged;
+        if the row already carries a non-empty "id" (focus rows do; the backend PINS one into a
+            row on its first edit) -> that id wins, unchanged;
         else id = kind[0] + "-" + sha1( kind + ":" + canon ).hexdigest()[:12]
         where canon = json.dumps({k: v for k, v in obj.items() if k != "id"},
                                  sort_keys=True, ensure_ascii=False, separators=(",", ":")).
@@ -580,22 +580,6 @@ details.dec>summary::-webkit-details-marker{display:none}
 .anch-stub code{background:var(--bad-soft);border-radius:5px;padding:0 5px;font-size:10.5px;font-family:var(--mono)}
 .dfa{color:#2f6b3f;background:var(--ok-soft);display:block}
 .dfr{color:var(--bad);background:var(--bad-soft);display:block}
-.surprises{margin:16px 0 4px}
-.surp-title{font-size:15px;font-weight:650;color:var(--ink);margin:0 0 10px;font-family:var(--serif);letter-spacing:-.01em}
-.surp{border-left:3px solid var(--edge);background:var(--surface);border-top:1px solid var(--line);border-right:1px solid var(--line);border-bottom:1px solid var(--line);border-radius:0 12px 12px 0;padding:10px 14px;margin:0 0 9px}
-.surp-h{display:flex;align-items:center;gap:8px;margin-bottom:3px}
-.surp-badge{font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--ink3);background:var(--paper);border-radius:999px;padding:2px 10px}
-.surp-dir{font-size:11px;color:var(--mut);font-family:var(--mono)}
-.surp-head{font-size:14px;font-weight:650;color:var(--ink);line-height:1.45}
-.surp-d{font-size:12.5px;color:var(--ink3);line-height:1.55;margin-top:2px}
-.surp-hidden-bottleneck,.surp-metric-green-output-bad{border-left-color:#c94f36;background:var(--bad-soft)}
-.surp-hidden-bottleneck .surp-badge,.surp-metric-green-output-bad .surp-badge{background:#f7ddd5;color:var(--bad)}
-.surp-hard-turned-free{border-left-color:#4d9260;background:var(--ok-soft)}
-.surp-hard-turned-free .surp-badge{background:#ddeedd;color:#2f6b3f}
-.surp-assumed-bottleneck-not{border-left-color:var(--accent);background:var(--acc-soft)}
-.surp-assumed-bottleneck-not .surp-badge{background:#f3dccf;color:var(--acc-ink)}
-.surp-easy-turned-hard{border-left-color:#d0972a;background:var(--warn-soft)}
-.surp-doubt{border-left-color:#8f6cc0;background:#f7f4fb}
 .newbar{margin:14px 0 2px;padding:10px 14px;border-radius:12px;background:var(--ok-soft);border:1px solid #cfe4cf;font-size:12.5px;color:#2f6b3f}
 .newbar code{background:#ddeedd;color:#245232;border-radius:5px;padding:1px 6px;font-size:11.5px;font-family:var(--mono)}
 .new-tag{background:var(--ok);color:#fff;font-size:9.5px;font-weight:700;letter-spacing:.04em;padding:1px 7px;border-radius:999px;margin-left:7px;vertical-align:middle}
@@ -1625,48 +1609,6 @@ def planning_story_html(motivation, goal, bar, pl):
     return _render_beats(planning_story_beats(motivation, goal, bar, pl))
 
 
-# The report's HOOK: a report is a story of its SURPRISES (voice rule 6), not a did-list. This band
-# leads with where reality broke from intuition. Fed by surprises.<name>.jsonl:
-#   {ts, valence, headline, detail, direction?}. Empty file -> nothing renders.
-SURPRISE_LABEL = {
-    "assumed-bottleneck-not":  "looked like the bottleneck — wasn't",
-    "hidden-bottleneck":       "the real wall, hidden in a 'done' decision",
-    "hard-turned-free":        "looked hard — was free",
-    "easy-turned-hard":        "looked trivial — was the wall",
-    "metric-green-output-bad": "green metric, quietly-wrong output",
-    "doubt":                   "a genuine doubt",
-}
-
-
-def surprises_html(surprises):
-    """The 🎢 band — the intuition-vs-reality gaps, newest first. Each card = a valence badge +
-    a headline + one detail line. This is the report's lead hook, not a footnote."""
-    if not surprises:
-        return ""
-    rows = sorted((s for s in surprises if isinstance(s, dict) and s.get("headline")),
-                  key=lambda s: s.get("ts", ""), reverse=True)
-    if not rows:
-        return ""
-    cards = []
-    for s in rows:
-        val = s.get("valence", "")
-        badge = _e(SURPRISE_LABEL.get(val, val or "surprise"))
-        dirn = f" <span class='surp-dir'>{_e(s.get('direction'))}</span>" if s.get("direction") else ""
-        _f = _e(f"SURPRISE ({val}) — {s.get('headline','')}: {s.get('detail','')}"
-                + (f"  [direction: {s.get('direction')}]" if s.get("direction") else ""))
-        sid = stable_line_id("surprise", s)  # matches chat_backend.stable_line_id exactly
-        cards.append(
-            f"<div class='surp surp-{_e(val)}'>"
-            f"<div class='surp-h'><span class='surp-badge'>{badge}</span>{dirn}</div>"
-            f"<div class='surp-head'{_eattr('surprise', 'headline', s.get('headline',''), id=sid)}>"
-            f"{_ec(s.get('headline',''))}</div>"
-            f"<div class='surp-d'{_eattr('surprise', 'detail', s.get('detail',''), id=sid)}>"
-            f"{_ec(s.get('detail',''))}</div>"
-            f"<div class='tl-chat' data-focus=\"{_f}\"></div></div>")
-    return ("<div class='surprises'><div class='surp-title'>🎢 What surprised us — "
-            "where reality broke from the plan</div>" + "".join(cards) + "</div>")
-
-
 def purpose_funnel_html(purpose, mt=None, edit_attrs=""):
     """The report's OPENING line — one plain sentence of why this exists (the whole point, big→small).
     Fed by purpose.<name>.txt; any 'LABEL:' prefixes are stripped and the lines joined into one lead.
@@ -2318,7 +2260,7 @@ TOPROCESS_JS = r"""
 
 
 def render_html(name, goal, bar, pl, nodes, knowledge, kinds, id2phase, phase_order,
-                glossary=None, clarify=None, motivation="", tldr="", surprises=None, purpose="",
+                glossary=None, clarify=None, motivation="", tldr="", purpose="",
                 narrative=""):
     glossary, clarify = glossary or [], clarify or []
     gmap = _gloss_map(glossary)
@@ -2348,7 +2290,7 @@ def render_html(name, goal, bar, pl, nodes, knowledge, kinds, id2phase, phase_or
             if planning else
             "research tree · the project as one story: want · problem · bottleneck · did · next")
     H.append(f"<h1>{_e(name)}</h1><div class='sub'>{_sub}</div>")
-    if narrative:  # LLM wrote the prose — it replaces the templated lead+tldr+surprises+newly-done
+    if narrative:  # LLM wrote the prose — it replaces the templated lead+tldr+newly-done
         H.append(f"<div class='llm'>{_md2html(narrative)}</div>")
     else:
         # one plain lead line: why we're doing this. Editable: the purpose lead writes back to
@@ -2374,7 +2316,7 @@ def render_html(name, goal, bar, pl, nodes, knowledge, kinds, id2phase, phase_or
         H.append(f"<div class='kv'><span class='k'>DONE</span><span>{_ec(bar)}</span></div>")
     if planning:  # planning stage has no log/tree yet -> the plan-only arc is fine; the mature
         H.append(planning_story_html(motivation, goal, bar, pl))  # 5-beat is dropped (redundant with
-    # the lead line + surprises + newly-done + focus + timeline, and it lied "nothing done" when the
+    # the lead line + newly-done + focus + timeline, and it lied "nothing done" when the
     # tree had no verdicts even though the log was full).
     H.append("<div class='score'><div class='dots'>" + _dots(counts) + "</div>"
              f"<div class='lbl'>{summ.get('decided_built',0)}/{counts.get('decided',0)} decided built · "
@@ -2401,9 +2343,7 @@ def render_html(name, goal, bar, pl, nodes, knowledge, kinds, id2phase, phase_or
     # the sticky .rnav bar (one view on screen at a time — the whole report was one endless
     # scroll). An empty section drops out, taking its tab with it; NAV_JS drives the switching.
 
-    # ---- 🎢 SURPRISES: always render the structured band (each card carries its own per-item
-    # chatbox) — even under the LLM narrative, so every surprise stays individually askable. ----
-    now_sec = [surprises_html(surprises)]
+    now_sec = []
 
     # ---- 🆕 NEWLY DONE: which DECISION(s) moved this run, in one short plain sentence each
     # (the decision's `plain` field — jargon-free by design). All dated detail is in the Timeline
@@ -2448,7 +2388,7 @@ def render_html(name, goal, bar, pl, nodes, knowledge, kinds, id2phase, phase_or
         # rendered in the 🎯 Goals tab — review debt IS an unmet goal
         anch_div = ("<div class='ancbar'>⛓ <b>Code review debt:</b> " + " · ".join(parts) + "</div>")
 
-    # ---- 📅 timeline: opens with the Now essentials (surprises · newly-done · focus), then the
+    # ---- 📅 timeline: opens with the Now essentials (newly-done · focus), then the
     # dated rows (suppressed at planning stage — nothing has happened yet) ----
     tl_sec = [p for p in now_sec if p]
     if not planning:
@@ -2516,8 +2456,8 @@ def render_html(name, goal, bar, pl, nodes, knowledge, kinds, id2phase, phase_or
 
     # ---- nav bar + sections: a tab only exists when its section has content; the glossary
     # (a one-line collapsed box) and the foot stay outside the tabs, always visible. ----
-    # 0.4.3: the report simplifies to 5 tabs — 📅 Timeline (absorbed 🎢 Now's surprises/newly-
-    # done/focus) · 🎛 Agents (working sessions) · 🧠 Skills · 🎯 Goals (absorbed the plan's
+    # 0.5.0: the report simplifies to 5 tabs — 📅 Timeline (absorbed 🎢 Now's newly-done/focus;
+    # the surprises band is gone) · 🎛 Agents (working sessions) · 🧠 Skills · 🎯 Goals (absorbed the plan's
     # open items + the review-debt line) · 🖍 Requests (the old outside-the-tabs feedback box +
     # 🔧 To-process actions, unified). 🔀 Data & pipeline and 🧭 Decisions (spine + search tree)
     # are un-wired from the report; their builders (data_section_html / pipeline_html /
@@ -2979,7 +2919,6 @@ def _load_project(name):
     tldr = tp.read_text(encoding="utf-8").strip() if tp.exists() else ""  # keep line breaks -> bullets
     pp = paths.resolve(f"purpose.{name}.txt")
     purpose = pp.read_text(encoding="utf-8").strip() if pp.exists() else ""
-    surprises = tree._load_jsonl(paths.resolve(f"surprises.{name}.jsonl"))
     kinds = {}
     for e in tree.load_events(name, facts):
         d = e.get("direction")
@@ -2993,7 +2932,7 @@ def _load_project(name):
     return {"name": name, "facts": facts, "nodes": nodes, "pl": pl, "know": know,
             "goal": goal, "bar": bar, "kinds": kinds, "id2phase": id2phase,
             "phase_order": phase_order, "glossary": glossary, "clarify": clarify,
-            "motivation": motivation, "tldr": tldr, "purpose": purpose, "surprises": surprises}
+            "motivation": motivation, "tldr": tldr, "purpose": purpose}
 
 
 # --- optional LLM-written narrative (same HTML shell; just a swappable LLM entry) ----------------
@@ -3001,9 +2940,7 @@ def _load_project(name):
 # WRITE the opening narrative from the same substrate; it renders into the SAME report shell.
 REPORT_SYS = (
     "Write a terse status report for the operator who owns this project. Open with ONE plain sentence "
-    "(what this is + why, from `purpose`). Then LEAD with the SURPRISES — where reality broke from "
-    "intuition (from `surprises`): looked-hard-was-trivial, looked-trivial-was-the-wall, assumed-vs-"
-    "real bottleneck; make them the spine. Then what we DID/built (from `log`, newest first) and NEXT "
+    "(what this is + why, from `purpose`). Then what we DID/built (from `log`, newest first) and NEXT "
     "(from `focus`). <=3 sentences per point, plain language, no ceremony; mechanical passing is the "
     "floor, never celebrated. Ground every claim in the data; invent nothing. Output short Markdown.")
 
@@ -3117,8 +3054,7 @@ def llm_narrative(name, provider):
             "decisions": [{"id": d.get("id"), "status": d.get("status"),
                            "plain": d.get("plain") or d.get("decision"), "built": bool(d.get("artifact"))}
                           for d in pl],
-            "log": jl(f"log.{name}.jsonl"), "surprises": jl(f"surprises.{name}.jsonl"),
-            "focus": jl(f"focus.{name}.jsonl")}
+            "log": jl(f"log.{name}.jsonl"), "focus": jl(f"focus.{name}.jsonl")}
     try:
         return _llm(provider, REPORT_SYS, "Project data (JSON):\n" + json.dumps(data, ensure_ascii=False))
     except Exception:
@@ -3135,8 +3071,8 @@ SLIDES_SYS = (
     "(3) DISTILL, don't dump: merge related decisions, keep only the 3-5 that matter, translate jargon, "
     "drop minor ones. This is a talk, not the document. "
     "(4) Follow this arc, ~7-10 slides total: the PROBLEM (why this project exists / what's hard), the "
-    "APPROACH (how we attack it), the KEY DECISIONS distilled (what we chose and the one-line why), what "
-    "SURPRISED us (where reality broke the plan), WHERE IT STANDS now, and the SINGLE next thing. "
+    "APPROACH (how we attack it), the KEY DECISIONS distilled (what we chose and the one-line why), "
+    "WHERE IT STANDS now, and the SINGLE next thing. "
     "(5) 'note' = one sentence of speaker context for that slide (optional, may be empty). "
     "Return the JSON array and nothing else.")
 
@@ -3199,7 +3135,6 @@ def llm_slides(name, provider):
             "decisions": [{"id": d.get("id"), "status": d.get("status"),
                            "plain": d.get("plain") or d.get("decision"), "choice": d.get("choice"),
                            "why": d.get("why"), "pillar": bool(d.get("pillar"))} for d in pl],
-            "surprises": jl(f"surprises.{name}.jsonl"),
             "focus": jl(f"focus.{name}.jsonl"),
             "recent_log": jl(f"log.{name}.jsonl")[-12:],
         }
@@ -3247,7 +3182,7 @@ def generate(name):
                                     d["know"], d["kinds"], d["id2phase"], d["phase_order"],
                                     glossary=d["glossary"], clarify=d["clarify"],
                                     motivation=d["motivation"], tldr=d["tldr"],
-                                    surprises=d["surprises"], purpose=d["purpose"],
+                                    purpose=d["purpose"],
                                     narrative=narrative),
                         encoding="utf-8")
     slidespath = outdir / f"{name}.slides.html"

@@ -125,11 +125,11 @@ THE FEEDBACK ITEM:
 
 READ FIRST — the report substrate for project '{project}' (under {data_root}/):
   goal.{project}.txt · purpose.{project}.txt · plan.{project}.jsonl (the decisions) ·
-  surprises.{project}.jsonl · focus.{project}.jsonl · glossary.{project}.jsonl · clarify.{project}.jsonl
+  focus.{project}.jsonl · glossary.{project}.jsonl · clarify.{project}.jsonl
 THE REAL PROJECT CODE you may read: {', '.join(sub_dirs) or '(none configured — substrate only)'}
 
 DO, like a dev:
-1. If the referent is ambiguous, LOCATE it in the substrate first (which decision/surprise/card).
+1. If the referent is ambiguous, LOCATE it in the substrate first (which decision/card).
 2. Classify: confusion | correction | readability.
 3. If it's a CORRECTION (operator says something is WRONG), VERIFY the disputed claim against the
    REAL code before deciding. Set claim_verdict: operator_right (there IS an error) /

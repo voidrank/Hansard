@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """chat_backend.py — a LIVE local backend for the report's chat widget (replaces the dumb static
 http.server). Per question it reads the CURRENT full substrate (goal/purpose/every decision in full/
-log/surprises/focus/glossary) AND greps the project's code+data for terms in the question, builds a
+log/focus/glossary) AND greps the project's code+data for terms in the question, builds a
 rich context, and answers via the local LLM entries (viz._llm: codex/kimi/claude — no browser API key).
 Any ```memory``` block the model emits is folded back into the LOCAL glossary/clarify files, so the
 learning loop closes on this one box. Serves the rendered HTML statically too.
@@ -86,11 +86,10 @@ def build_context(project, question, decision_id=None, focus_text=None):
                     f"    chose: {d.get('choice','')[:400]}\n    why: {d.get('why','')[:300]}")
     gl = "\n".join(f"- {g.get('term')}: {g.get('plain')} ({g.get('why','')})" for g in _jl(f"glossary.{project}.jsonl"))
     log = "\n".join(f"  {e.get('ts')} [{e.get('kind')}] {e.get('direction')}: {e.get('note')}" for e in _jl(f"log.{project}.jsonl"))
-    surp = "\n".join(f"- ({s.get('valence')}) {s.get('headline')} — {s.get('detail')}" for s in _jl(f"surprises.{project}.jsonl"))
     foc = "\n".join(f"- {f.get('title')}: trying={f.get('trying')} next={f.get('next')}" for f in _jl(f"focus.{project}.jsonl"))
     ctx = (focus + f"PROJECT: {project}\nPURPOSE: {_read(f'purpose.{project}.txt')}\nGOAL: {_read(f'goal.{project}.txt')}\n\n"
            f"ALL DECISIONS (full):\n" + "\n".join(decs) + f"\n\nGLOSSARY:\n{gl}\n\nDATED LOG (what we did):\n{log}\n\n"
-           f"SURPRISES:\n{surp}\n\nCURRENT FOCUS:\n{foc}")
+           f"CURRENT FOCUS:\n{foc}")
     return ctx + _grep_code(project, question)
 
 
@@ -127,11 +126,11 @@ def answer(project, question, decision_id=None, history=None, provider=None, foc
                                             "why": t.get("why", ""), "dec": decision_id}, ensure_ascii=False) + "\n")
             cp = paths.resolve(f"clarify.{project}.jsonl")
             # persist focus_text (+ ts) too — the digest reads `focus` as the item's quote
-            # (feedback.py:86); dropping it made surprise-launched chats (dec=null) digest to an
+            # (feedback.py:86); dropping it made card-launched chats (dec=null) digest to an
             # EMPTY quote. Matches the {dec,q,a,ts,focus?} schema + the absorb path in viz._fold_blob.
             row = {"q": question, "a": clean, "dec": decision_id,
                    "ts": _dt.datetime.now(_dt.timezone.utc).isoformat(timespec="seconds")}
-            if focus_text:  # WHAT the question was about (highlighted surprise/card text)
+            if focus_text:  # WHAT the question was about (highlighted card text)
                 row["focus"] = str(focus_text)[:300]
             with cp.open("a", encoding="utf-8") as f:
                 f.write(json.dumps(row, ensure_ascii=False) + "\n")
@@ -225,11 +224,10 @@ SAFE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 # locate the row). Anything not here is rejected 400 — this dict IS the security boundary.
 #   locate="id"    : match the JSONL object whose "id"   == body.id   (decision)
 #   locate="term"  : match the JSONL object whose "term" == body.id   (glossary)
-#   locate="line"  : match by stable_line_id(kind, obj) == body.id    (surprise, focus)
+#   locate="line"  : match by stable_line_id(kind, obj) == body.id    (focus)
 #   locate="whole" : no row; body.value overwrites the whole .txt     (goal, purpose)
 EDIT_SPEC = {
     "decision": {"file": "plan.{p}.jsonl",      "fields": ("decision", "choice", "why", "status"),           "locate": "id"},
-    "surprise": {"file": "surprises.{p}.jsonl", "fields": ("headline", "detail", "valence", "direction"),    "locate": "line"},
     "focus":    {"file": "focus.{p}.jsonl",     "fields": ("title", "trying", "next", "status"),              "locate": "line"},
     "glossary": {"file": "glossary.{p}.jsonl",  "fields": ("term", "plain", "why"),                           "locate": "term"},
     "goal":     {"file": "goal.{p}.txt",        "fields": (),                                                 "locate": "whole"},
@@ -238,7 +236,7 @@ EDIT_SPEC = {
 
 
 def stable_line_id(kind, obj):
-    """Deterministic id for a surprises/focus row. THE FRONTEND (viz.py) MUST COMPUTE THIS
+    """Deterministic id for a focus row. THE FRONTEND (viz.py) MUST COMPUTE THIS
     IDENTICALLY — copy this body verbatim so the id in data-e-id matches what the backend recomputes.
     Contract:
         if the row already carries a non-empty "id" (focus rows do) -> that id wins, unchanged;
@@ -342,7 +340,7 @@ def apply_edit(body):
         return _rewrite_jsonl_field(path, lambda o: str(o.get("id", "")) == item_id, field, value, prev)
     if locate == "term":                        # glossary — match the row whose "term" == body.id
         return _rewrite_jsonl_field(path, lambda o: str(o.get("term", "")) == item_id, field, value, prev)
-    # locate == "line": surprise / focus — match by the deterministic stable_line_id, and PIN it so a
+    # locate == "line": focus — match by the deterministic stable_line_id, and PIN it so a
     # content-hashed id never drifts after this edit changes the hashed content.
     return _rewrite_jsonl_field(path, lambda o: stable_line_id(body["kind"], o) == item_id,
                                 field, value, prev, persist_id=item_id)

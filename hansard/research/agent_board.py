@@ -195,7 +195,7 @@ THE TASK: {task.get('title')}
 {task.get('prompt')}
 
 READ — the report substrate for board '{board}' (under {paths.data_root()}/):
-  goal.{board}.txt · purpose.{board}.txt · plan.{board}.jsonl · surprises.{board}.jsonl ·
+  goal.{board}.txt · purpose.{board}.txt · plan.{board}.jsonl ·
   focus.{board}.jsonl · glossary.{board}.jsonl · log.{board}.jsonl
 THE REAL PROJECT CODE you may read: {', '.join(sub_dirs) or '(none configured — substrate only)'}
 

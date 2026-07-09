@@ -11,7 +11,7 @@ rebuilt every run, never hand-maintained**. Read-only, fail-soft.
 | view | what it is | how to get it |
 |---|---|---|
 | **Plan** — the spine | the ordered DECISIONS that define the run, each tagged with a transferable principle + a status (open → decided → verified) | `python3 plan.py` · `/hansard:plan` (decide + quiz) |
-| **Report** — the demo | ONE self-contained HTML, 5 tabs: 📅 Timeline (opens with surprises · newly-done · focus) · 🎛 Agents (working sessions) · 🧠 Skills (the plugin's slash commands) · 🎯 Goals (DONE bar + what's left) · 🖍 Requests (operator notes, adopt/dismiss). Spine + search tree + pipeline render in the slides deck | `python3 viz.py [proj]` → `viz/<proj>.html` · `/hansard:execute-and-report` |
+| **Report** — the demo | ONE self-contained HTML, 5 tabs: 📅 Timeline (opens with newly-done · focus) · 🎛 Agents (working sessions) · 🧠 Skills (the plugin's slash commands) · 🎯 Goals (DONE bar + what's left) · 🖍 Requests (operator notes, adopt/dismiss). Spine + search tree + pipeline render in the slides deck | `python3 viz.py [proj]` → `viz/<proj>.html` · `/hansard:execute-and-report` |
 | **Coaching hints** | the two read-only lints (below), one line, just-in-time | `python3 lint.py [proj]` (`--brief` = the SessionStart one-liner) · `/hansard:execute-and-report` |
 
 ## The two lints (pure hints — they never restrict exploration)

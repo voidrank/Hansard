@@ -178,3 +178,28 @@ A single cross-tenant read is the catastrophe, so test it: with two Google accou
 A cannot open `/<B-email>/<project>.html` (403) unless A is an admin or B has shared+consented, and
 that a non-admin dashboard never lists another operator. This is exercised by the worker's local
 `wrangler dev` access-matrix test.
+
+## Dual-mode deployment (2026-07-09)
+
+**Local (zero-touch day to day).** `local.sh` runs the exact prod worker on this box via
+`wrangler dev --local`: local R2/DO persist under `data_root/worker-local`, secrets auto-generated
+into a gitignored `.dev.vars`, bound to 0.0.0.0:8787 for LAN devices. The data_root `keepalive.sh`
+(cron, every minute + @reboot) tends all four daemons: chat backend (8420), remote relay
+(`relay_agent.py run`, guard anchored `run$`), local worker (8787), local relay
+(`relay_agent.py run local`, its own flock). Every report render mirrors to the local worker too
+(`push._mirror_local`; `HANSARD_LOCAL_REPORT_SERVER=none` opts out). First login from a device:
+`http://<box>:8787/?token=<data_root/.token>`.
+
+**Remote (worker code deploy, five steps).**
+1. Verify LOCALLY first — `local.sh` + curl probes (`/login` 200, upload 200, old-cookie 200).
+   The local worker's first run caught a request-killing recursion before it reached prod; treat
+   local-green as the deploy gate.
+2. Copy `worker/` OUTSIDE the git repo (wrangler 4.86 doubles the path against the git root).
+3. `eval "$(grep '^export CLOUDFLARE' ~/.bashrc)"` + `export CLOUDFLARE_ACCOUNT_ID=…` (the token
+   lacks Memberships:Read, so pin the account).
+4. `wrangler deploy` — uploads, then errors on the route rebind. THE ERROR IS NOT HARMLESS: it
+   aborts auto-promotion, live traffic stays on the old version. Always follow with
+   `wrangler versions list` → `wrangler versions deploy <newest-id>@100% -y`.
+5. Re-probe the live routes.
+With `Workers R2 Storage:Edit` + `Zone:Workers Routes:Edit` added to the token, step 4's route
+claim succeeds and manual promotion becomes unnecessary.

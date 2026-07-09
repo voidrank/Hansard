@@ -45,7 +45,7 @@ function htmlEscape(str) {
 // Session cookie: written as hansard_token since the rename; trainlint_token is read as a
 // permanent fallback so every session issued before the rename stays logged in (dual-read).
 function getSessCookie(request) {
-  return getCookie(request, "hansard_token") || getSessCookie(request);
+  return getCookie(request, "hansard_token") || getCookie(request, "trainlint_token");
 }
 
 function getCookie(request, name) {
@@ -298,7 +298,7 @@ export default {
       // state. An anonymous magic-link cookie (…@hansard.local) does NOT count — pairing to it
       // would bind the token to the anonymous ns instead of the user's Google account (the bug that
       // left the agent stranded on a third namespace). Force a real Google login before pairing.
-      if (!who || String(who.email).endsWith("@hansard.local")) {
+      if (!who || /@(hansard|trainlint)\.local$/.test(String(who.email))) {
         const clientId = env.GOOGLE_CLIENT_ID;
         const redirectUri = `https://${url.host}/auth/google/callback`;
         if (!clientId) {
@@ -646,7 +646,7 @@ export default {
         let pruned = 0;
         const alive = [];
         for (const g of groups) {
-          const zombie = !g.live && g.email.endsWith("@hansard.local") && g.updatedAt && (now - g.updatedAt) > STALE_MS;
+          const zombie = !g.live && /@(hansard|trainlint)\.local$/.test(g.email) && g.updatedAt && (now - g.updatedAt) > STALE_MS;
           if (zombie) {
             for (const n of g.keys) { try { await env.REPORTS.delete(`_agents/${n}`); pruned++; } catch {} }
             continue;
@@ -724,7 +724,7 @@ export default {
         else if (rest.endsWith(".html")) projects.add(rest.slice(0, -".html".length));
       }
       
-      const isRawToken = who.email.endsWith("@hansard.local");
+      const isRawToken = /@(hansard|trainlint)\.local$/.test(who.email);
       const activeToken = isRawToken ? getSessCookie(request) : await mintToken(who.email, env);
       const userDisplay = isRawToken ? "Local Secure Token (Anonymous)" : who.email;
 

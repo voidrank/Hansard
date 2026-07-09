@@ -228,11 +228,13 @@ def share(email):
         sys.exit(1)
 
 
-def _single_instance_or_exit():
-    """Hold an exclusive flock so only ONE relay agent ever runs — otherwise multiple agents with the
-    same token keep kicking each other off the worker (1012 'replaced by newer') and the relay flaps."""
+def _single_instance_or_exit(lock_name="relay_agent.lock"):
+    """Hold an exclusive flock so only ONE relay agent PER TARGET ever runs — otherwise multiple
+    agents with the same token keep kicking each other off the worker (1012 'replaced by newer')
+    and the relay flaps. The remote and the LOCAL worker (dual-mode deploy) are different targets,
+    so each gets its own lock file and the two coexist."""
     import fcntl
-    lock_path = paths.data_root() / "relay_agent.lock"
+    lock_path = paths.data_root() / lock_name
     f = open(lock_path, "w")
     try:
         fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -245,6 +247,14 @@ def _single_instance_or_exit():
 if __name__ == "__main__":
     if sys.argv[1:2] == ["share"] and len(sys.argv) > 2:
         share(sys.argv[2])
+    elif sys.argv[1:3] == ["run", "local"]:
+        # dual-mode deploy: dial the LOCAL worker (wrangler dev --local, report-server/local.sh) so
+        # LAN-served pages get live chat/edit/digest too. Separate lock — coexists with the remote
+        # relay (same token, different worker, no 1012 flapping between them).
+        os.environ["HANSARD_RELAY_URL"] = (os.environ.get("HANSARD_LOCAL_RELAY_URL")
+                                           or "ws://127.0.0.1:8787/agent")
+        _LOCK = _single_instance_or_exit("relay_agent.local.lock")
+        asyncio.run(run())
     elif sys.argv[1:2] == ["run"] or not sys.argv[1:]:
         _LOCK = _single_instance_or_exit()
         asyncio.run(run())

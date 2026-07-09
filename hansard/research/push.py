@@ -55,7 +55,13 @@ def push_report(project: str, html_path: Path, slides_path: Path):
             return
 
     server = os.environ.get("HANSARD_REPORT_SERVER") or os.environ.get("TRAINLINT_REPORT_SERVER", "https://secondfoundationlabs.com").strip().rstrip("/")
-    
+
+    # 0. Dual-mode deploy: ALSO mirror to the local worker (wrangler dev --local via
+    # report-server/local.sh) when one is listening. Independent of the remote push — offline work
+    # still refreshes the LAN copy; a dead local worker costs one refused connect.
+    # HANSARD_LOCAL_REPORT_SERVER=none opts out.
+    _mirror_local(token, project, html_path, slides_path)
+
     # 1. Upload main report (kind=html)
     try:
         _upload(server, token, project, "html", html_path)
@@ -81,6 +87,21 @@ def push_report(project: str, html_path: Path, slides_path: Path):
         # If using local automatic anonymous token, print the PAIRING link
         print(f"\n[hansard-push] ☁️  Anonymous report uploaded!")
         print(f"[hansard-push] 🔗 One-click link to Google Account: {server}/link?token={token}&project={urllib.parse.quote(project)}")
+
+
+def _mirror_local(token: str, project: str, html_path: Path, slides_path: Path):
+    """Mirror both views to the LOCAL worker (dual-mode deploy). Fail-silent by design: the local
+    worker is optional — no listener means a fast refused connect, never a stall or an error."""
+    local = (os.environ.get("HANSARD_LOCAL_REPORT_SERVER")
+             or os.environ.get("TRAINLINT_LOCAL_REPORT_SERVER", "http://127.0.0.1:8787")).strip().rstrip("/")
+    if not local or local.lower() == "none":
+        return
+    for kind, p in (("html", html_path), ("slides", slides_path)):
+        try:
+            _upload(local, token, project, kind, p)
+        except Exception:
+            return  # local worker not up — normal, stay silent
+    print(f"[hansard-push] 🖥️  Local report: {local}/{project}.html")
 
 
 def _upload(server: str, token: str, project: str, kind: str, file_path: Path):

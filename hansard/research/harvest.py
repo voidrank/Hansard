@@ -4,7 +4,8 @@ into the DURABLE append-only research log, BEFORE the session is compacted/delet
 
 Why: the search SHAPE is re-derivable from durable repo traces (run names, configs,
 metrics), but the JUDGMENTS (why-abandoned / hypothesis / verdict / wall) live only in
-the session — which Claude Code compacts and rotates away. So harvest them into git.
+the session — which Claude Code compacts and rotates away. So harvest them into the
+per-project log under paths.data_root() (outside the plugin tree; survives version bumps).
 
 Wire to Claude Code `PreCompact` and `SessionEnd` hooks (the moment before loss), and/or
 run periodically:   python3 harvest.py <transcript.jsonl> [project]

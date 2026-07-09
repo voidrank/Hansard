@@ -1,39 +1,41 @@
-# Trainlint
+# Hansard
 
-### It trained fine. That's the bug.
+### The work, on the record.
 
-Your AI agent now writes your training code — fast, and just as confident when it's wrong. The worst
-training bugs don't crash. The loss still drops, the run looks fine, and a week later you find the
-one line that was wrong the whole time.
+Your AI agent now does real research work — writes the training code, launches the runs, draws
+the conclusions. It's fast, and just as confident when it's wrong. And it all happens in a chat
+log that scrolls away: decisions nobody wrote down, a goal that quietly drifts, a bug that never
+crashed, findings that die when the session compacts.
 
-**Trainlint is the senior researcher looking over your agent's shoulder** — always on, never tired.
-It has the three habits an experienced collaborator would:
+**Hansard is the harness that puts the agent's work on the record.** It is three things at once:
 
-1. It **catches the silent mistake the moment it's typed.**
-2. It **won't let you move on a decision you can't explain.**
-3. It **remembers every branch you've already burned.**
+1. **A doorman that perceives every move.** Every prompt, every tool call, every file read,
+   every final report passes through it. It stays silent 99% of the time — and catches the
+   silent mistake the moment it's typed.
+2. **A compass that keeps the work aimed at the target.** The project is planned as explicit
+   *decisions*; every turn re-injects the goal and the one decision everything waits on;
+   high-stakes work on a decision you can't explain stops until you can.
+3. **A multi-agent control plane.** The live report (phone + web) is where you *run* the
+   project, not just read it: spawn a board of read-only investigator agents on any question,
+   have one agent per feedback item deal with your notes, share the record with your team.
 
-The judgment stays yours. It just keeps the work honest.
-
-> You lint your code. Your agent now writes your *training* code. This lints that.
+> Hansard grew out of **Trainlint**, a training-code linter — *"it trained fine; that's the
+> bug."* The linter is still the floor everything else stands on.
 
 ---
 
-## 1. It catches the silent mistake the moment it's typed
+## 1. It perceives every move the agent makes
 
-Every move the agent makes — change a config, launch a run, touch the model — it sees. And like a
-good senior colleague, it reacts in proportion — one of four moves, and the last one covers 99% of
-the time:
+Change a config, launch a run, touch the model, read a file, sign off with a report — the
+doorman sees it, and reacts in proportion. Four channels, and the last one covers 99% of the
+time:
 
 | | when | who it bothers |
 |---|---|---|
-| 🚫 **turns it around** | a known-bad setting it's sure about | nobody — the agent just redoes it |
-| 🙋 **taps your shoulder** | a change only a human can judge | you — it hands you the diff |
-| 👈 **mutters to the agent** | a small "maybe check this" | the agent only |
-| 😶 **says nothing** | 99% of the time | nobody |
-
-The skill is in what it *doesn't* send you. It taps your shoulder only for the one case a machine
-can't judge and a quiet word can't fix — so you never end up muting it.
+| 🚫 **reject** | a machine-certain mistake, or un-quizzed high-stakes work | nobody — the agent just redoes it |
+| 🙋 **escalate** | a change only a human can judge | you — it hands you the diff |
+| 👈 **coach** | a small "maybe check this" | the agent only |
+| 😶 **silent** | 99% of the time | nobody |
 
 **What that looks like.** Say the agent writes this loss, mid-flow:
 
@@ -41,126 +43,132 @@ can't judge and a quiet word can't fix — so you never end up muting it.
 loss = F.cross_entropy(logits.view(-1, vocab), labels.view(-1))
 ```
 
-It runs. The loss even drops. But the next-token shift is gone — the model is being asked to predict
-each token from *itself*. Only you can say whether that's a bug — an autoregressive model needs the
-shift; a diffusion model must *not* have it — so Trainlint hands you the diff:
+It runs. The loss even drops. But the next-token shift is gone — the model is being asked to
+predict each token from *itself*. Only you can say whether that's a bug — an autoregressive
+model needs the shift; a diffusion model must *not* have it — so Hansard hands you the diff:
 
 > *The loss lost its off-by-one shift (`logits[:, :-1]` vs `labels[:, 1:]`). Without it an
 > autoregressive model just learns to copy its input — the loss keeps dropping while the output
 > collapses to one repeated token. Please confirm.*
 
-Nothing crashed. No test went red. The model would have spent the whole run learning to echo. That's
-the week you keep.
+Nothing crashed. No test went red. The model would have spent the whole run learning to echo.
+That's the week you keep.
 
-![the loop a silent bug puts you in — and where Trainlint cuts it](docs/the-loop.svg)
+![the loop a silent bug puts you in — and where the doorman cuts it](docs/the-loop.svg)
 
-**It knows the shapes silent bugs come in.** They feel endless, but they aren't — a few families
-cover almost all of them:
+**The perception is total, not keyword-deep:**
 
-1. **Training and inference quietly disagree** — preprocessing that no longer matches the frozen
-   encoder, a mask or off-by-one present in training but not generation, padding the tokenizer never
-   saw.
-2. **The model takes a shortcut you left open** — hand it a crutch (a peek at the answer in
-   training) and it leans on that, not the real signal. Great scores with it; collapse without.
-3. **You're not measuring the model** — an eval or demo that looks the same whether the model is
-   great or broken.
-4. **The value you wrote isn't the value that ran** — config piles up from flags, files, env, and
-   defaults; the last writer wins, silently.
-5. **The ground rots under you** — storage that corrupts under load: fine in a 10-minute test,
-   fatal six hours in.
-
-Each is a **principle, not a fact about your project** — it survives a move to a new model or
-codebase. Your specifics (which encoder, which path, which number) live in one swappable facts file.
-That's ~30 rules today, every one an instance of these five.
-
-**And it makes the agent show its work.** Whenever the agent wires data into a model or touches the
-loss, Trainlint makes it trace one batch end to end — from the loader, through each layer, to the
-final number — and check it lines up at every step. The trap: two tensors can have the *same shape*
-and still mean different things — a label matched up one step off, a weight applied down the wrong
-dimension. Nothing errors; the model just trains on the wrong thing. Doing the trace on paper,
-before the run, is the cheap way to catch it.
+- **Every tool action** goes through a three-stage pipeline: a structural prefilter
+  (default-open — reads, docs, and self-edits pass untouched), deterministic checks backed by
+  *real verifiers* (mel-power, frozen-encoder contract, manifest leak, effective learning rate,
+  shape-flow), and plan-aware routing (§2).
+- **Every file read** is tracked. Edit a file the agent never read this session and it gets a
+  quiet word — acting on unread code is where silent bugs hide.
+- **Every final report** hits the report doorman on the `Stop` event: a plan report that skips
+  the where-we-stand line, the map, or plain language — or forgets to deliver the HTML — gets
+  bounced once for a rewrite.
+- **Every session leaves a trace.** Before a session compacts, its judgments are harvested into
+  the durable project log — append-only, stored outside the plugin tree so it survives both
+  compaction and plugin upgrades. The next session starts from the record, not from zero.
 
 Two things make it safe to leave on:
 
-- **It blocks a move, never your direction.** A "turn it around" stops one action, not your
-  approach. A plateau is often right before a breakthrough — it won't prune your search. Information,
-  not control; the judgment stays yours.
-- **It can never lock you out.** It blocks in only two cases — a mistake it's certain about, or
-  high-stakes work on a decision you haven't been quizzed on (more in §2) — always with a polite
-  "denied," never by crashing. A bug in the guard is safer than the bug it guards against: it fails
-  open by design.
+- **It blocks a move, never your direction.** A reject stops one action, not your approach.
+  Information, not control; the judgment stays yours.
+- **It can never lock you out.** The router is fail-open and always exits 0 — blocking happens
+  only through a polite `permissionDecision: deny`, never a crash. A bug in the guard is safer
+  than the bug it guards against.
 
-## 2. It won't let you move on a decision you can't explain
+## 2. It keeps the work aimed at the target
 
-A silent bug isn't the only way to lose a week. You can also build the wrong thing — start before
-you understand what you're building, or commit to a decision you only half-hold. A good senior
-researcher makes you slow down at exactly those moments.
+A silent bug isn't the only way to lose a week. You can also build the wrong thing — start
+before you understand what you're building, or drift off the goal one busywork step at a time.
 
-`/trainlint:plan` walks the whole project in plain language — every term defined (no "wait, what's a
-DAC?" three weeks in), every claim tied to the actual code — and breaks it into the **decisions**
-that quietly determine whether it works. Then it **quizzes you** on each until it sticks.
+`/hansard:plan` walks the whole project in plain language — every term defined, every claim tied
+to the actual code — and breaks it into the **decisions** that quietly determine whether it
+works. Then it **quizzes you** on each until it sticks. From then on:
 
-From then on it stays with you two ways:
+- **A compass, every turn.** Your **goal**, the **main thread** (the one decision that gates
+  everything right now), and the **next action** are re-injected into every prompt — the agent
+  stays locked on the target instead of wandering.
+- **A gate on the un-understood.** Before high-stakes work (model, loss, training) on a decision
+  you've never been quizzed on, it stops and asks *you* to explain it first. Answer it (or say
+  "skip") and it clears.
+- **Decision-aware routing.** The doorman knows which plan decision an edit touches: an **open**
+  decision escalates, a settled one stays a quiet coach — so probe scripts don't trip the
+  "needs your eyes" alarm.
+- **Goal-drift lint.** A goal still advertising scope that a decision dropped gets flagged;
+  decided-on-paper is kept distinct from built, and built from verified.
+- **Autopilot (opt-in).** With the gates green, the plan → execute → report loop keeps driving
+  itself toward the main thread's next artifact — and pauses the moment a human judgment, a GPU
+  budget, or a strategic call is actually needed. Capped, biased to pause.
 
-- **A compass, every turn** — your **goal**, the **main thread** (the one open question that gates
-  everything right now), and the **next action**. Lose the goal and you wander; lose the thread and
-  you scatter.
-- **A gate on the un-understood** — before high-stakes work (model, loss, training) on a decision
-  you've never been quizzed on, it stops and asks *you* to explain it first. Not to gatekeep — the
-  silent bugs come from acting on a decision you only half-hold. Answer it (or say "skip") and it
-  clears. It runs on the same plan the catch-layer uses: it knows which decision an edit touches, so
-  it speaks up on the open ones and stays quiet on the settled.
+## 3. It's a multi-agent control plane
 
-It holds the agent to the same bar. When the agent signs off with a status report, Trainlint checks
-it was written for a teammate who *didn't* build this — a one-line where-we-stand, a real map, plain
-words instead of a wall of insider names — and bounces it once for a rewrite if not.
+Both commands sign off with a self-contained **HTML report** — and the report is not a printout,
+it's the cockpit. Served live to your phone and browser through a zero-inbound-config relay
+(your box dials out; Google login; every viewer isolated to their own namespace; consented
+shares for teammates), it has five tabs:
 
-## 3. It remembers every branch you've already burned
+**📅 Timeline · 🎛 Agents · 🧠 Skills · 🎯 Goals · 🖍 Requests**
 
-The slowest way to lose a week is going in circles — over-tuning a dead branch, re-running what you
-already ruled out, hitting a wall a paper would have explained. After enough sessions you don't
-remember either. A senior researcher does.
+- **🎛 Agents — a board of investigator agents.** Type a question into the report, hit run, and
+  a headless Claude Code agent picks it up — one agent per task, several in parallel. Every
+  board agent is **provably read-only** (read/grep/glob only; no write path exists), so the
+  board can't race your working tree; findings come back as cards baked into the record. A
+  write tier — agents editing in isolated worktrees, operator-approved onto a branch — is
+  designed to graft onto this spine next.
+- **🖍 Requests — one agent per note.** Highlight anything in the report and leave a note from
+  your phone. "Deal with all requests" spawns one read-only agent per item; each answer, and
+  how it was handled, lands back in the record.
+- **🎯 Goals — the bar, and what's left.** The DONE bar, every decision short of verified
+  (open · decided-on-paper · built-but-unverified), and the ★ main-thread row marked
+  *settle this next*.
+- **In-report chat.** Every decision card has a chatbot that answers from your *current* local
+  substrate and code — not from a stale snapshot.
 
-So Trainlint keeps a map. It rebuilds the **search tree** of directions you've tried — from traces
-you already leave (run names + a durable log), nothing you maintain by hand. Then it hints, never
+## 4. It remembers every branch you've already burned
+
+The slowest way to lose a week is going in circles — over-tuning a dead branch, re-running what
+you already ruled out, hitting a wall a paper would have explained. Hansard rebuilds the
+**search tree** of directions you've tried from traces you already leave, then hints, never
 prunes:
 
 - when you've over-tuned one branch past the point of return
 - when a stuck branch is the *trunk's* fault, not the branch's
-- which paper explains the wall you *just* hit — shown when you hit it, not early (reading it early
-  is cargo-cult)
+- which paper explains the wall you *just* hit — shown when you hit it, not early
 
-![Trainlint rebuilds your search tree and hints, never prunes — flagging an over-tuned branch, a stuck branch that's the trunk's fault, and the paper that explains the wall you just hit](docs/search-tree.png)
+![Hansard rebuilds your search tree and hints, never prunes](docs/search-tree.png)
 
-**Nothing to maintain.** The tree is rebuilt from traces every run; the one irreplaceable thing —
-"why we abandoned X" — is saved to git before a session compacts. See it any time with
-`/trainlint:viz`.
+And for a project that lived before Hansard, `/hansard:load` is the one-time inhale: it reads
+the project's existing skills, `CLAUDE.md`/`AGENTS.md`, and agent auto-memory once, sorts every
+item into the store that can act on it, and every session thereafter starts from that memory.
 
-## Why a colleague — not a prompt, a skill, or a workflow
+## Who judges what
 
-Why this form, and not a doc or a command? The mistakes are silent, constant, and you don't know
-you're making them.
+One rule keeps the whole system honest: **route each call to whoever can actually judge it.**
 
-- A **prompt** (CLAUDE.md) is advice you can ignore — always-on noise, blind to the actual diff,
-  unable to stop anything.
-- A **skill or workflow** has to be *invoked* — but you'd never call a "check my training code" step
-  at the exact second you drop an off-by-one, and running a workflow per edit is heavy and backwards.
+- Machine-checkable → rejected by a deterministic verifier, silently.
+- Only a human can tell → escalated to you, with the diff.
+- Everything else → a quiet word to the agent.
 
-Only something **ambient** works: on every action, unasked, seeing the real diff, able to stop the
-bad one. That's what a senior colleague is — present, not summoned.
+A small model (opt-in) may help *route* a call — suppress a false positive, decide whether a
+conclusion needs a human, decide whether autopilot may continue. It never judges whether code
+is correct. That's for a deterministic check, or for you.
 
-One rule keeps it honest: **route each call to whoever can actually judge it.** Machine-checkable →
-turned around silently. Only a human can tell → sent to you. Everything else → a quiet word to the
-agent. A small model may help *route* a call, but it never judges whether code is correct — that's
-for a deterministic check, or for you.
+The scars behind each rule are in [DESIGN.md](hansard/DESIGN.md) — read it before adding rules.
 
-The scars behind each rule are in [DESIGN.md](trainlint/DESIGN.md) — read it before adding rules.
+## Runs on three hosts
+
+The same harness supervises **Claude Code**, **OpenAI Codex CLI** (`install-codex.sh`), and
+**Kimi CLI** (`install-kimi.sh`) — foreign tool calls are normalized to one shape before the
+pipeline, so the rules are written once.
 
 ## Install
 
 ```
-/plugin marketplace add voidrank/Trainlint
-/plugin install trainlint@trainlint
+/plugin marketplace add voidrank/Hansard
+/plugin install hansard@hansard
 ```
 
 Pure Python standard library — **zero dependencies.** Then it just runs. See
@@ -168,17 +176,21 @@ Pure Python standard library — **zero dependencies.** Then it just runs. See
 
 ## Use it on your project
 
+The surface is deliberately two commands — one for the *thinking* half of the loop, one for the
+*doing* half — plus two utilities:
+
 ```
-/trainlint:init <name>      # register a project (thin — no TODO ceremony)
-/trainlint:plan             # understand it end-to-end, break it into decisions, get quizzed
-/trainlint:quiz             # drill the decisions + the concepts you keep forgetting
-/trainlint:viz              # see your search tree
-/trainlint:lint             # directionality + "read this now" hints
+/hansard:plan                 # decide: full context in plain language → decisions → quiz you
+/hansard:execute-and-report   # do: drive the load-bearing decision, record the outcome, report
+/hansard:use <name>           # bind this session to a project
+/hansard:load [project]       # one-time inhale of a pre-Hansard project's memory
 ```
+
+Both loop commands sign off on the same `HTML: <path>` line — the live report of §3.
 
 ## Why it stays general
 
-The **mechanism is fixed**, the **principles are portable**, the **project facts are one swappable
-file.** Porting to a new project = write one `project.<name>.json`; the rules don't change. Read
-[DESIGN.md](trainlint/DESIGN.md) before adding rules — it keeps the principles from drifting as the
-list grows.
+The **mechanism is fixed**, the **principles are portable**, the **project facts are one
+swappable file.** Porting to a new project = write one `project.<name>.json`; the rules don't
+change. Read [DESIGN.md](hansard/DESIGN.md) before adding rules — it keeps the principles from
+drifting as the list grows.

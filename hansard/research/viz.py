@@ -1289,8 +1289,13 @@ ANNOT_JS = r"""
           if(j.state==='done'){
             var cleared=(!fbDead&&digestHandledIds.length)?digestHandledIds.length:0;
             if(cleared)clearRequests(digestHandledIds);  // handled -> summarized to Timeline -> clear
+            // empty run: say what the LAST digest did instead of finishing silently — a bare
+            // "done · no new feedback" reads as "the button did nothing" (2026-07-09 scar)
+            var lastRun=(!cleared&&j.last_run_ts)?('<br>nothing new to process — the previous digest handled '+
+              (j.last_run_n||'?')+' request(s) ('+esc(String(j.last_run_ts))+'); their verdicts are in the '+
+              '&ldquo;🖍 Operator requests&rdquo; box in this report.'):'';
             endDigest('✅ done'+(cleared?' — '+cleared+' request(s) handled, summarized to the Timeline &amp; cleared':'')+
-              '. <a href="javascript:location.reload()">reload the report</a>'+
+              '. <a href="javascript:location.reload()">reload the report</a>'+lastRun+
               (j.summary?'<br>'+esc(String(j.summary)).slice(0,240):''));
           }else if(j.state==='error'){
             endDigest('✗ digest failed: '+esc(String(j.error||'unknown')).slice(0,200));

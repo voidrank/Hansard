@@ -63,6 +63,24 @@ def _runs_dir(project):
     return d
 
 
+def _last_run_info(project):
+    """{"last_run_ts","last_run_n"} for the newest batch of per-feedback agent runs (dirs within
+    30 min of the newest), or None if this project never ran one. Feeds the empty-run status so
+    the button can say what the previous digest DID instead of finishing silently."""
+    try:
+        d = paths.data_root() / "feedback_runs" / project
+        runs = sorted((p for p in d.iterdir() if p.is_dir()),
+                      key=lambda p: p.stat().st_mtime, reverse=True)
+        if not runs:
+            return None
+        import time as _t
+        newest = runs[0].stat().st_mtime
+        n = sum(1 for p in runs if newest - p.stat().st_mtime < 1800)
+        return {"last_run_ts": _t.strftime("%Y-%m-%d %H:%M", _t.localtime(newest)), "last_run_n": n}
+    except Exception:
+        return None
+
+
 def _repo_dirs(project):
     """The real project code dirs the agent may read (from project.<name>.json), existing only."""
     try:
@@ -339,7 +357,12 @@ def run(project):
     # collect_new returns (llm_item_strings, skeleton_records); we want the rich records
     if not recs:
         _consume(consumed)  # folded blobs were already-digested dupes -> drain them from the queue
-        _status({"state": "done", "project": project, "summary": f"{project}: no new feedback"})
+        # An empty run used to render as a silent no-op and the button read as broken (the
+        # 2026-07-09 "没有显示处理的log" scar). Attach what the LAST real run did so the page can
+        # answer "nothing new — here's where the previous results live" instead of saying nothing.
+        st = {"state": "done", "project": project, "summary": f"{project}: no new feedback"}
+        st.update(_last_run_info(project) or {})
+        _status(st)
         return {"project": project, "items": 0, "applied": 0, "pending": 0}
     sub_dirs = _repo_dirs(project)
     total = len(recs)

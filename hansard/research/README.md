@@ -61,6 +61,9 @@ mechanism (general, fixed)
   harvest.py         session transcript → durable log (LLM pass assigns plan-id directions)
   plan.py progress.py    the decision floor-plan + quiz mastery/coverage state
   flow.py            lifecycle hooks: context · compass · hint · viz-nudge · harvest
+  load.py            /hansard:load's deterministic half: discover inhale-able sources
+                     (CLAUDE.md · .claude/skills · auto-memory), load-once manifest,
+                     SessionStart digest, prompt→skill hint
   new_project.py     thin scaffolder for a new project
 
 general, project-free
@@ -70,9 +73,22 @@ per-project facts (swap these to port — mechanism untouched)
   plan.<name>.jsonl       the ordered decisions (the spine)
   facts.<name>.json       thresholds / runs_glob / direction_regex / trunk_checks / candidate_moves
   knowledge.<name>.jsonl  papers/refs indexed by the PROBLEM they solve (+ wall match keywords)
+  skills.<name>.jsonl     reusable PROCEDURES (inhaled by /hansard:load, appended as work teaches)
+  load.<name>.json        the load-once manifest: which sources were inhaled, content-hashed
   log.<name>.jsonl        durable append-only annotations (git-committed)
   goal.<name>.txt         one-line goal + the "done" bar
 ```
+
+## Inhaling an existing project (`/hansard:load`)
+
+A project that predates Hansard already carries context — `.claude/skills/`, `CLAUDE.md`/
+`AGENTS.md`, Claude Code auto-memory. `/hansard:load` reads it ONCE, and the agent sorts every
+item into the store that can act on it: procedure → `skills.<name>.jsonl`, fact/finding →
+`knowledge.<name>.jsonl`, guardable mistake → `project.<name>.json` facts (the doorman),
+term → glossary. `load.py mark` stamps a content-hashed manifest, so a re-run ingests only
+new/changed sources. From then on `flow.py` injects the digest at every SessionStart (plus the
+keep-producing contract) and points a matching prompt at its loaded skill — so every new
+session/agent starts FROM the inhaled memory instead of rediscovering it.
 
 ## Port to another project
 

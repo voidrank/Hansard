@@ -26,6 +26,10 @@ import lint       # noqa: E402  (lint.brief)
 import plan       # noqa: E402  (plan.brief — the project's decision floor-plan)
 import paths      # noqa: E402  — per-project data lives outside the versioned plugin dir
 try:
+    import load as loadmem  # noqa: E402  (inhaled skills/knowledge — /hansard:load)
+except Exception:  # pragma: no cover
+    loadmem = None
+try:
     import goalcheck  # noqa: E402  (goal ↔ decisions scope-drift warning)
 except Exception:  # pragma: no cover
     goalcheck = None
@@ -90,6 +94,13 @@ def context_briefing(name, nodes):
                          "it unwritten; a plan on disk is what the quiz + doorman build on.")
         else:
             parts.append("no plan yet — draft the project's decisions with `/hansard:plan`")
+    if loadmem is not None:
+        # the inhaled-memory digest (/hansard:load): what skills/knowledge this project already
+        # carries, so a fresh session STARTS from them instead of rediscovering — plus the
+        # keep-producing contract (new procedure → skills, fact → knowledge, mistake → facts).
+        lm = loadmem.brief(name)
+        if lm:
+            parts.append(lm)
     b = lint.brief(name)
     parts.append(f"search tree: {len(nodes)} directions"
                  + (f"; {b}" if b else "; no stalled branches / ready papers right now"))
@@ -191,6 +202,20 @@ def main():
         if h and h != _read(STATE / f"{name}.hint"):
             _write(STATE / f"{name}.hint", h)
             out.append(h)
+        # (1b) inhaled-skill hint — the prompt matches a loaded skill's keywords: "you already
+        # have a procedure for this, read it before reinventing". Same coupling as the surfacer
+        # (trigger = the task at hand, not recency); deduped like the lint hint (fires when the
+        # hit-set changes, so it never nags the same ask twice in a row). Coach-only.
+        if loadmem is not None:
+            hits = loadmem.skill_hits(name, data.get("prompt", ""))
+            sig = ",".join(sorted(s.get("id", "") for s in hits))
+            if hits and sig != _read(STATE / f"{name}.skillhint"):
+                _write(STATE / f"{name}.skillhint", sig)
+                named = "; ".join(f"'{s.get('title', s.get('id', '?'))}' (id={s.get('id', '?')})"
+                                  for s in hits[:3])
+                out.append(f"🧰 [hansard:skills] a loaded skill covers this — {named} — read "
+                           f"{paths.resolve(f'skills.{name}.jsonl')} and follow it "
+                           f"before reinventing the procedure")
         # (2) viz when the tree changed — but ONLY for a project with a REAL search (branching or a
         # wall). A pre-experiment project's tree is empty/trivial; nudging viz there is busywork.
         fp = _tree_fp(nodes)

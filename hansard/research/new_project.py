@@ -68,6 +68,9 @@ def main():
     w(paths.wfile(f"knowledge.{name}.jsonl"),
       "# papers/refs indexed by the PROBLEM they solve. one JSON object per line.\n"
       "# fields: id | title | problem | concepts[] | prereqs[] | match[] (wall keywords) | read(bool)\n")
+    w(paths.wfile(f"skills.{name}.jsonl"),
+      "# reusable PROCEDURES — inhaled once by /hansard:load, appended as the work teaches new ones.\n"
+      "# fields: id | title | when | how | match[] (task keywords) | source. See skills.example.jsonl.\n")
     w(paths.wfile(f"log.{name}.jsonl"),
       "# durable append-only annotation log (harvested from sessions). starts empty.\n")
     w(paths.wfile(f"plan.{name}.jsonl"),

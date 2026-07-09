@@ -1,0 +1,9 @@
+# Skill store — reusable PROCEDURES, inhaled once by /hansard:load and appended as the work
+# teaches new ones. A skill is "how to do X again without rediscovering it": launch recipes,
+# env setup, pipeline invocations. (A fact/finding belongs in knowledge.<name>.jsonl; a
+# guardable mistake belongs in project.<name>.json facts — see /hansard:load.)
+# fields: id | title | when (the situation that calls for it) | how (the distilled procedure,
+#         concrete commands/steps) | match[] (task keywords — flow.py hints the skill when a
+#         prompt contains one) | source (the file it was distilled from)
+{"id": "launch-single-gpu-sft", "title": "Launch a single-GPU SFT smoke run", "when": "you need a fast known-good training run to validate data/config changes before a full launch", "how": "conda activate mimo; cd $TRAIN_ROOT; bash scripts/sft_1gpu.sh --config configs/sft_debug.yaml --data $DATA/mini — watch loss for 50 steps; a flat/NaN loss inside 50 steps means the config, not the model", "match": ["smoke", "single-gpu", "sft", "debug run", "验证配置"], "source": "/path/to/project/.claude/skills/launch-sft/SKILL.md"}
+{"id": "encode-audio-codes", "title": "Re-encode audio to codec codes (full-clip)", "when": "any time training data audio codes must be (re)generated", "how": "ALWAYS encode the full clip (encode_full_clip), never refresh_encode on a window; power=1.0 mel; verify by decoding 3 random rows and listening", "match": ["encode", "codec", "audio codes", "re-encode", "重新编码"], "source": "/path/to/project/memory/duplex-synth-data-is-clean.md"}

@@ -83,9 +83,10 @@ hansard/
 │   ├── plan.example.jsonl  facts.example.json  goal.example.txt  knowledge.example.jsonl  log.example.jsonl
 │   ├── plan.workflow.js  internal engine for /hansard:plan (big-codebase offload; not its own command)
 │   ├── tree.py  governor.py  surfacer.py  lint.py  harvest.py  new_project.py
+│   ├── load.py              /hansard:load's deterministic half: source discovery · load-once manifest · digest · prompt→skill hint  (+ skills.example.jsonl)
 │   ├── viz.py               research-tree HTML (5-beat story · timeline · spine+tree); planning-stage mode before any run
 │   ├── principles.jsonl     distilled project-AGNOSTIC laws (the refined layer)
-├── commands/{plan,execute-and-report}.md
+├── commands/{plan,execute-and-report,use,load}.md
 ├── codex/hooks.json  install-codex.sh    Codex CLI port (apply_patch matcher, PreCompact harvest)
 └── tests/{run.py, cases.jsonl, test_planaware.py, test_codex_compat.py}   +  research/test_research.py
 ```
@@ -100,6 +101,16 @@ separate stages of the work, just separate buttons.)
 |---|---|
 | `/hansard:plan [review\|status\|from-log\|<id\|topic\|free-text>]` | the **decide** half — registers the project if new (thin scaffold), establishes its FULL context (plain language, file:line grounded), decomposes into decisions (written as you go), fills the facts, then **quizzes you** on each (pass an id/topic/concept to drill just one) — closing on the **compass** (goal · main thread · next action) **and the HTML report path**, never a menu |
 | `/hansard:execute-and-report [project\|decision-id]` | the **do** half — picks the one decision everything waits on (the `load_bearing` main thread), proposes & **drives** the cheapest move to settle it (doorman live the whole time), records the outcome back into the plan, then **reports**: the search-tree shape (the old `lint`) + the self-contained HTML report (the old `viz`) |
+
+Two small utilities sit beside the loop: `/hansard:use <name>` binds THIS session to a project,
+and `/hansard:load [project]` is the **one-time inhale** for a project that lived before Hansard —
+it reads the project's existing `.claude/skills/`, `CLAUDE.md`/`AGENTS.md`, and Claude Code
+auto-memory ONCE, sorts every item into the store that can act on it (procedure →
+`skills.<name>.jsonl` · guardable mistake → doorman facts/lint · fact/finding →
+`knowledge.<name>.jsonl` · term → glossary), and stamps a content-hashed manifest so a re-run
+touches only new/changed sources. From then on every session STARTS from the inhaled memory
+(SessionStart digest; a prompt matching a loaded skill gets pointed at it) and keeps the stores
+growing as it works.
 
 Both commands **sign off on the same `HTML: <path>` line** — the self-contained visual report
 (`research/viz.py`). Before any experiment, `viz.py` renders a planning-stage story (motivation ·

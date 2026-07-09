@@ -501,9 +501,6 @@ html.js .rsec.on{display:block;animation:rsec-in .18s ease}
 .chip.pillar{background:var(--acc-soft);border-color:var(--acc-edge);color:var(--acc-ink);font-weight:600}
 .rej{margin-top:12px;font-size:12.5px;color:var(--bad)}
 .rej b{color:#96331f}
-.legend{display:flex;gap:18px;flex-wrap:wrap;background:transparent;border:1px solid var(--line);
-  border-radius:12px;padding:11px 16px;margin:16px 0;font-size:12.5px;color:var(--mut)}
-.legend b{color:var(--ink2)}
 h2.sec{font-size:11.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--mut);margin:26px 4px 10px;font-weight:700}
 .card{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:8px 6px;
   box-shadow:0 1px 2px rgba(28,26,22,.03)}
@@ -519,11 +516,16 @@ h2.sec{font-size:11.5px;letter-spacing:.12em;text-transform:uppercase;color:var(
 .tl .delta{font-weight:700;margin-left:6px}
 .tl .up{color:var(--ok)}.tl .flat{color:var(--mut)}
 .tl .note{color:var(--ink2)}
-.tl a.read{display:inline-block;margin-top:4px;font-size:12px;color:var(--ok);text-decoration:none;
+.tl .read{display:inline-block;margin-top:4px;font-size:12px;color:var(--ok);text-decoration:none;
   background:var(--ok-soft);border:1px solid #cfe4cf;border-radius:999px;padding:2px 10px}
-/* two-column */
-.cols{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.05fr);gap:18px;align-items:start}
-@media(max-width:820px){.cols{grid-template-columns:1fr}}
+/* skills + goals rows */
+.sk-row{padding:9px 10px;border-bottom:1px solid var(--line2)}
+.sk-row:last-child{border-bottom:0}
+.sk-row code{font-family:var(--mono);font-size:12.5px;font-weight:600;color:var(--ink);
+  background:var(--paper);border-radius:6px;padding:1px 7px}
+.sk-desc{font-size:12.5px;color:var(--ink3);margin-top:4px}
+.go-row{display:flex;gap:9px;align-items:baseline;padding:9px 10px;border-bottom:1px solid var(--line2)}
+.go-row:last-child{border-bottom:0}
 .phase{font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--mut);margin:12px 8px 4px;font-weight:700}
 .implgrp{margin-top:6px;border-top:1px dashed var(--line)}
 .implgrp>summary{cursor:pointer;list-style:none;user-select:none}
@@ -566,9 +568,7 @@ details.dec>summary::-webkit-details-marker{display:none}
 .anclink:hover{background:#3a362e}
 .ancbar{display:block;background:var(--surface);border:1px solid var(--line);border-radius:14px;color:var(--ink2);
   font-size:13px;padding:12px 16px;margin:12px 0 4px;text-decoration:none;transition:background .15s,border-color .15s}
-.ancbar:hover{background:var(--paper);border-color:var(--edge)}
 .ancbar .anch-red{color:var(--bad)}
-.ancbar-go{float:right;font-weight:700;color:var(--acc-ink)}
 .anccode{max-height:340px;overflow:auto}
 .anccode .cl{display:block;white-space:pre;min-height:1.6em}
 .anccode .cl::before{counter-increment:acl;content:counter(acl);display:inline-block;width:3em;
@@ -2087,13 +2087,56 @@ def agents_section_html(name):
             f"<div class='ag-board'>{board}</div></div>")
 
 
-def feedback_section_html(name):
-    """🖍 Operator feedback — every note/question the reader left, digested into WHY it was
-    left (confusion / correction / readability) plus the action each implies. The digest is
-    written by feedback.py at --absorb time; renders only when feedback exists. This closes
-    the loop visibly: the reader sees their margin notes were heard, the agent reads the same
-    file (feedback.<name>.jsonl) to fix the glossary, re-examine disputed decisions, and
-    improve the report itself."""
+def skills_section_html():
+    """🧠 Skills — the plugin's slash commands, auto-scanned from commands/*.md (zero
+    maintenance: a new command file appears here on the next render). Description +
+    argument hint come from the YAML frontmatter; a file without frontmatter (use.md)
+    falls back to its first non-empty body line. Never raises."""
+    try:
+        cmd_dir = ROOT.parent / "commands"
+        if not cmd_dir.is_dir():
+            return ""
+        try:
+            prefix = json.loads((ROOT.parent / ".claude-plugin" / "plugin.json")
+                                .read_text(encoding="utf-8")).get("name") or "hansard"
+        except Exception:
+            prefix = "hansard"
+        rows = []
+        for f in sorted(cmd_dir.glob("*.md")):
+            desc, hint = "", ""
+            lines = f.read_text(encoding="utf-8").splitlines()
+            if lines and lines[0].strip() == "---":  # YAML frontmatter
+                body_at = len(lines)
+                for i, ln in enumerate(lines[1:], 1):
+                    if ln.strip() == "---":
+                        body_at = i + 1
+                        break
+                    k, _, v = ln.partition(":")
+                    k, v = k.strip(), v.strip().strip('"')
+                    if k == "description":
+                        desc = v
+                    elif k == "argument-hint":
+                        hint = v
+                lines = lines[body_at:]
+            if not desc:  # no frontmatter (or none had a description) -> first body line
+                desc = next((ln.strip() for ln in lines if ln.strip()), "")
+            hint_html = f" <span class='chip'>{_e(hint)}</span>" if hint else ""
+            rows.append(f"<div class='sk-row'><code>/{_e(prefix)}:{_e(f.stem)}</code>{hint_html}"
+                        f"<div class='sk-desc'>{_ec(desc)}</div></div>")
+        if not rows:
+            return ""
+        return ("<h2 class='sec'>🧠 Skills — the plugin's slash commands</h2>"
+                "<div class='card'>" + "".join(rows) + "</div>")
+    except Exception:
+        return ""  # a listing, never worth taking the report down
+
+
+def requests_section_html(name):
+    """🖍 Requests — every note the reader left (feedback.<name>.jsonl), the whole loop in one
+    tab: PENDING requests first as actionable cards (✓ Adopt applies the agent's proposed_edits
+    via the owner-only /resolve, ✗ Dismiss clears it — TOPROCESS_JS wires the buttons), then the
+    RESOLVED history below, each with the agent's verdict/worklog. Supersedes the old
+    outside-the-tabs feedback box + the 🔧 To-process tab. Never raises."""
     try:
         fb = [e for e in tree._load_jsonl(paths.resolve(f"feedback.{name}.jsonl"))
               if isinstance(e, dict)]
@@ -2101,39 +2144,73 @@ def feedback_section_html(name):
             return ""
         col = {"confusion": "#a84a2f", "correction": "#b91c1c", "readability": "#92400e"}
         kinds = {}
-        rows = []
         for e in fb:
             k = str(e.get("kind") or "unclassified")
-            done = bool(e.get("resolved"))
             kinds[k] = kinds.get(k, 0) + 1
-            act = str(e.get("action") or e.get("insight") or "")
-            # agentic digest extras: a per-feedback Claude Code agent verified the item against the
-            # real code and left a worklog. Surface its verdict (esp. for corrections it fixed or
-            # REFUSED) + the concrete proposal, so the loop is visible and reviewable in the report.
-            extra = ""
-            if e.get("agentic"):
-                verdict = str(e.get("claim_verdict") or "")
-                if k == "correction" and verdict in ("operator_right", "operator_wrong"):
-                    lbl = ("operator was RIGHT — fix proposed" if verdict == "operator_right"
-                           else "operator was WRONG — agent refused, with evidence")
-                    vcol = "#b91c1c" if verdict == "operator_right" else "#059669"
-                    extra += f"<div class='fb-act' style='color:{vcol};font-weight:600'>🤖 {_e(lbl)}</div>"
-                prop = str(e.get("proposal") or "")
-                if prop:
-                    extra += ("<details class='fb-wl'><summary>🤖 agent worklog / proposal</summary>"
-                              f"<pre>{_e(_trunc(prop, 1600))}</pre></details>")
-            rows.append(
-                f"<div class='fb-row{' done' if done else ''}'>"
-                f"<span class='fb-kind' style='background:{col.get(k, '#7d7566')}'>{_e(k)}</span>"
-                f"<div><div class='fb-note'>“{_e(_trunc(str(e.get('quote') or ''), 90))}” — "
-                f"{_ec(str(e.get('note') or ''))}</div>"
-                + (f"<div class='fb-act'>→ {_ec(act)}</div>" if act else "")
-                + extra
-                + ("<div class='fb-done'>✓ addressed</div>" if done else "")
-                + "</div></div>")
+        pend = [e for e in fb if not e.get("resolved")]
         head = " · ".join(f"{v} {k}" for k, v in sorted(kinds.items()))
-        return (f"<details class='gl-box'><summary>🖍 Operator requests — {head}</summary>"
-                + "".join(rows) + "</details>")
+        out = [f"<h2 class='sec'>🖍 Requests — {_e(head)}</h2>"]
+        if pend:  # ---- actionable inbox: adopt/dismiss lives HERE, in the tab ----
+            out.append(f"<p class='lb-intro'>{len(pend)} request(s) awaiting your call — the "
+                       "agentic digest investigated and PROPOSED, but the change is yours to "
+                       "make. Adopt applies the agent's exact proposal; dismiss clears it.</p>")
+        for e in pend:
+            k = str(e.get("kind") or "unclassified")
+            key = str(e.get("key") or "")
+            pe = e.get("proposed_edits") or []
+            verdict = str(e.get("claim_verdict") or "")
+            vline = ""
+            if k == "correction" and verdict == "operator_right":
+                vline = "🤖 verified you were RIGHT — a fix is proposed"
+            elif k == "unclassified":
+                vline = "⚠ the agent could not produce a verdict — re-run the digest to retry"
+            prop = str(e.get("proposal") or "")
+            adopt_btn = (f"<button class='tp-adopt' data-key=\"{_eattr_val(key)}\">✓ Adopt</button>"
+                         if pe else "")
+            out.append(
+                "<div class='tp-card' data-key=\"" + _eattr_val(key) + "\">"
+                f"<div class='lb-head'><span class='fb-kind' style='background:{col.get(k, '#7d7566')}'>{_e(k)}</span>"
+                + (f"<span class='tp-nedits'>{len(pe)} proposed edit(s)</span>" if pe else "")
+                + "</div>"
+                f"<div class='lb-req'>“{_e(_trunc(str(e.get('quote') or ''), 120))}” — "
+                f"<b>{_ec(str(e.get('note') or ''))}</b></div>"
+                + (f"<div class='lb-diag'>{_ec(_trunc(str(e.get('insight') or ''), 400))}</div>" if e.get("insight") else "")
+                + (f"<div class='lb-vl'>{_e(vline)}</div>" if vline else "")
+                + (f"<details class='fb-wl'><summary>🤖 proposal / worklog</summary>"
+                   f"<pre>{_e(_trunc(prop, 1800))}</pre></details>" if prop else "")
+                + "<div class='tp-actions'>" + adopt_btn
+                + f"<button class='tp-dismiss' data-key=\"{_eattr_val(key)}\">✗ Dismiss</button>"
+                + "<span class='tp-msg'></span></div>"
+                + "</div>")
+        done = [e for e in fb if e.get("resolved")]
+        if done:  # ---- resolved history, below the inbox ----
+            out.append("<h2 class='sec'>handled</h2><div class='card'>")
+            for e in done:
+                k = str(e.get("kind") or "unclassified")
+                act = str(e.get("action") or e.get("insight") or "")
+                extra = ""
+                if e.get("agentic"):
+                    verdict = str(e.get("claim_verdict") or "")
+                    if k == "correction" and verdict in ("operator_right", "operator_wrong"):
+                        lbl = ("operator was RIGHT — fix proposed" if verdict == "operator_right"
+                               else "operator was WRONG — agent refused, with evidence")
+                        vcol = "#b91c1c" if verdict == "operator_right" else "#059669"
+                        extra += f"<div class='fb-act' style='color:{vcol};font-weight:600'>🤖 {_e(lbl)}</div>"
+                    prop = str(e.get("proposal") or "")
+                    if prop:
+                        extra += ("<details class='fb-wl'><summary>🤖 agent worklog / proposal</summary>"
+                                  f"<pre>{_e(_trunc(prop, 1600))}</pre></details>")
+                out.append(
+                    f"<div class='fb-row done'>"
+                    f"<span class='fb-kind' style='background:{col.get(k, '#7d7566')}'>{_e(k)}</span>"
+                    f"<div><div class='fb-note'>“{_e(_trunc(str(e.get('quote') or ''), 90))}” — "
+                    f"{_ec(str(e.get('note') or ''))}</div>"
+                    + (f"<div class='fb-act'>→ {_ec(act)}</div>" if act else "")
+                    + extra
+                    + "<div class='fb-done'>✓ addressed</div>"
+                    + "</div></div>")
+            out.append("</div>")
+        return "".join(out)
     except Exception:
         return ""  # feedback is an annotation layer — it must never take the report down
 
@@ -2195,63 +2272,12 @@ def logbook_section_html(name):
         return ""
 
 
-def toprocess_section_html(name):
-    """🔧 To process — the ACTIONABLE inbox: every request the digest left UNRESOLVED (a pending
-    correction/readability proposal, or a failed/unclassified agent). Each carries ✓ Adopt / ✗
-    Dismiss buttons (TOPROCESS_JS POSTs to the owner-only /resolve). Adopt applies the agent's
-    structured proposed_edits through the /edit whitelist; dismiss just clears it. The tab empties as
-    you process, so nothing falls through. Renders only when something is actually pending. Never
-    raises."""
-    try:
-        fb = [e for e in tree._load_jsonl(paths.resolve(f"feedback.{name}.jsonl"))
-              if isinstance(e, dict) and not e.get("resolved")]
-        if not fb:
-            return ""  # inbox zero -> no tab
-        col = {"confusion": "#a84a2f", "correction": "#b91c1c", "readability": "#92400e"}
-        out = ["<h2 class='sec'>🔧 To process — requests awaiting your call</h2>",
-               f"<p class='lb-intro'>{len(fb)} request(s) the agentic digest could not finish on its "
-               "own — it investigated and PROPOSED, but a substrate change or a human judgment is "
-               "yours to make. Adopt applies the agent’s exact proposal; dismiss clears it. Handled "
-               "requests move to the 📋 Logbook.</p>"]
-        for e in fb:
-            k = str(e.get("kind") or "unclassified")
-            key = str(e.get("key") or "")
-            pe = e.get("proposed_edits") or []
-            verdict = str(e.get("claim_verdict") or "")
-            vline = ""
-            if k == "correction" and verdict == "operator_right":
-                vline = "🤖 verified you were RIGHT — a fix is proposed"
-            elif k == "unclassified":
-                vline = "⚠ the agent could not produce a verdict — re-run the digest to retry"
-            prop = str(e.get("proposal") or "")
-            adopt_btn = (f"<button class='tp-adopt' data-key=\"{_eattr_val(key)}\">✓ Adopt</button>"
-                         if pe else "")
-            out.append(
-                "<div class='tp-card' data-key=\"" + _eattr_val(key) + "\">"
-                f"<div class='lb-head'><span class='fb-kind' style='background:{col.get(k, '#7d7566')}'>{_e(k)}</span>"
-                + (f"<span class='tp-nedits'>{len(pe)} proposed edit(s)</span>" if pe else "")
-                + "</div>"
-                f"<div class='lb-req'>“{_e(_trunc(str(e.get('quote') or ''), 120))}” — "
-                f"<b>{_ec(str(e.get('note') or ''))}</b></div>"
-                + (f"<div class='lb-diag'>{_ec(_trunc(str(e.get('insight') or ''), 400))}</div>" if e.get("insight") else "")
-                + (f"<div class='lb-vl'>{_e(vline)}</div>" if vline else "")
-                + (f"<details class='fb-wl'><summary>🤖 proposal / worklog</summary>"
-                   f"<pre>{_e(_trunc(prop, 1800))}</pre></details>" if prop else "")
-                + "<div class='tp-actions'>" + adopt_btn
-                + f"<button class='tp-dismiss' data-key=\"{_eattr_val(key)}\">✗ Dismiss</button>"
-                + "<span class='tp-msg'></span></div>"
-                + "</div>")
-        return "".join(out)
-    except Exception:
-        return ""
-
-
 def _eattr_val(s):
     """Escape a value for a double-quoted HTML attribute (keys can carry | and spaces)."""
     return str(s).replace("&", "&amp;").replace('"', "&quot;").replace("<", "&lt;")
 
 
-# Wires the 🔧 To process tab's Adopt/Dismiss buttons to the owner-only /resolve backend route.
+# Wires the 🖍 Requests tab's Adopt/Dismiss buttons to the owner-only /resolve backend route.
 # Relative fetch('resolve') rides whatever prefix the page is served under (same as chat/edit/digest).
 TOPROCESS_JS = r"""
 (function(){
@@ -2275,8 +2301,8 @@ TOPROCESS_JS = r"""
           ' · report re-rendered, reload to see it';
         setTimeout(function(){card.style.display='none';
           if(!document.querySelectorAll('.tp-card:not(.tp-gone)').length){
-            var nb=document.querySelector('.rnav button[data-sec="sec-toprocess"]');
-            if(nb){nb.style.opacity=.5;nb.textContent='🔧 To process (0)';}
+            var nb=document.querySelector('.rnav button[data-sec="sec-requests"]');
+            if(nb){nb.style.opacity=.5;nb.textContent='🖍 Requests (0)';}
           }},1400);
       }).catch(function(e){if(msg)msg.textContent='✗ '+(e&&e.message?e.message:'network');
         for(var i=0;i<btns.length;i++)btns[i].disabled=false;});
@@ -2394,9 +2420,6 @@ def render_html(name, goal, bar, pl, nodes, knowledge, kinds, id2phase, phase_or
     # ---- CURRENT FOCUS: the active trial-and-error work right now ----
     now_sec.append(focus_section_html(name))
 
-    # ---- DATA section + pipeline: what the project reads & writes, and the REAL data flow ----
-    flow_sec = [data_section_html(pl), pipeline_html(name)]
-
     # ---- anchors rollup: reviewability of the whole plan in one line (from n['_anchors'],
     # resolved in _load_project). Red count = built decisions a reviewer can't see code for.
     _acnt = {"pinned": 0, "drifted": 0, "broken": 0, "other": 0, "unanchored": 0}
@@ -2411,7 +2434,7 @@ def render_html(name, goal, bar, pl, nodes, knowledge, kinds, id2phase, phase_or
         if (not _codeanc and _n.get("status") in ("decided", "verified")
                 and plan.artifact_exists(_n, _abase)):
             _acnt["unanchored"] += 1
-    anch_line = ""
+    anch_div = ""
     if any(_acnt.values()):
         parts = [f"{_acnt['pinned']} pinned"]
         if _acnt["drifted"]:
@@ -2422,33 +2445,12 @@ def render_html(name, goal, bar, pl, nodes, knowledge, kinds, id2phase, phase_or
             parts.append(f"{_acnt['other']} unpinned")
         if _acnt["unanchored"]:
             parts.append(f"<b class='anch-red'>✗ {_acnt['unanchored']} built with NO code to review</b>")
-        anch_line = "<span><b>anchors</b> ⛓ " + " · ".join(parts) + "</span>"
-        # the LANDING tab must point at the code, or a reviewer never finds it (the code lives
-        # 2 clicks deep in 🧭 Decisions; this strip is the front-door). NAV_JS's #href handler
-        # switches tabs on click; with JS stripped it's a plain in-page anchor to the same section.
-        now_sec.insert(0, (
-            "<a class='ancbar' href='#sec-decisions'>⛓ <b>Code under review:</b> "
-            + " · ".join(parts)
-            + " <span class='ancbar-go'>see every decision's code →</span></a>"))
+        # rendered in the 🎯 Goals tab — review debt IS an unmet goal
+        anch_div = ("<div class='ancbar'>⛓ <b>Code review debt:</b> " + " · ".join(parts) + "</div>")
 
-    # ---- legend (lives with the decisions it explains) ----
-    if planning:
-        legend = ("<div class='legend'>"
-                  "<span><b>decisions</b> ✓ verified ◐ decided+built ✎ decided on paper (not built) ○ open</span>"
-                  "<span>◆ pillar — a core dimension the project always rests on</span>"
-                  "<span>★ main thread — the one decision to settle next</span>"
-                  + anch_line +
-                  "<span>click a decision to see its principle (or ask its chatbot)</span></div>")
-    else:
-        legend = ("<div class='legend'>"
-                  "<span><b>spine</b> ✓ verified ◐ decided+built ✎ decided on paper (not built) ○ open</span>"
-                  "<span><b>tree</b> ⚠ open problem · ✓ wall closed · ◆ tested · ↩ backtracked · ● decided · ○ idea</span>"
-                  "<span><b>edges</b> ⚠ wall → 📖 paper it unlocks</span>"
-                  + anch_line +
-                  "<span>click a decision to see its principle</span></div>")
-
-    # ---- timeline (suppressed at planning stage — nothing has happened yet) ----
-    tl_sec = []
+    # ---- 📅 timeline: opens with the Now essentials (surprises · newly-done · focus), then the
+    # dated rows (suppressed at planning stage — nothing has happened yet) ----
+    tl_sec = [p for p in now_sec if p]
     if not planning:
         tl_sec.append("<h2 class='sec'>Timeline — how the search got here</h2>")
         if rows:
@@ -2462,8 +2464,9 @@ def render_html(name, goal, bar, pl, nodes, knowledge, kinds, id2phase, phase_or
                     dhtml = f"<span class='delta {cls}'>{('+' if d>0 else '')}{d}</span>"
                 read = ""
                 if r["paper"]:
-                    read = (f"<br><a class='read' href='#kn-{_e(r['paper']['id'])}'>"
-                            f"📖 now readable: {_e(_trunc(r['paper']['title'],46))}</a>")
+                    # plain text, no link: the #kn- anchors lived inside the (un-wired) search tree
+                    read = (f"<br><span class='read'>"
+                            f"📖 now readable: {_e(_trunc(r['paper']['title'],46))}</span>")
                 _tf = _e(f"TIMELINE {r['ts']} [{lbl}] {r['direction']}: {r['note']}")
                 tl_sec.append(f"<div class='row'><div class='date'>{_e(r['ts'])}</div>"
                               f"<div class='mk' style='color:{col}'>{g}</div>"
@@ -2476,167 +2479,55 @@ def render_html(name, goal, bar, pl, nodes, knowledge, kinds, id2phase, phase_or
             tl_sec.append("<div class='card'><div class='empty'>No dated events harvested yet — the "
                           "timeline fills in from the session log (walls, verdicts, backtracks).</div></div>")
 
-    # ---- decision spine (full-width at planning stage; beside the search tree once it exists) ----
-    spine = ["<div><h2 class='sec'>"
-             + ("Decisions — strategy first, then implementation" if planning else "Decision spine — strategy vs implementation")
-             + "</h2><div class='card'>"]
-    # Group by ALTITUDE, not phase: the high-level bets up front; the code-level contracts &
-    # details folded away under Implementation, so strategy isn't drowned in detail.
-    _lvl_groups = [
-        ("Strategy — the high-level bets", [n for n in pl if n.get("level", "high") != "impl"], False),
-        ("Implementation — code-level contracts & detail", [n for n in pl if n.get("level") == "impl"], True),
+    # ---- 🎯 goals: wanted-but-not-yet-achieved — the DONE bar up top, then every decision
+    # still short of verified (open · decided-on-paper · built-but-unverified), then the code-
+    # review debt line. The ★ main-thread row is the one to settle next. ----
+    goals_sec = ["<h2 class='sec'>🎯 Goals — the bar, and what's left</h2>"]
+    if bar:
+        goals_sec.append(f"<div class='card' style='padding:12px 16px'>"
+                         f"<div class='kv'><span class='k'>DONE</span><span>{_ec(bar)}</span></div></div>")
+    if anch_div:
+        goals_sec.append(anch_div)
+    _po_ids = {n.get("id") for n in summ["paper_only"]}
+    _goal_groups = [
+        ("open — not yet decided", summ["open"]),
+        ("decided on paper — not built", summ["paper_only"]),
+        ("built — not yet verified", [n for n in summ["unverified"] if n.get("id") not in _po_ids]),
     ]
-    for _gname, _decs, _collapse in _lvl_groups:
-        if not _decs:
-            continue
-        if _collapse:
-            spine.append(f"<details class='implgrp'><summary class='phase'>{_e(_gname)} · {len(_decs)}</summary>")
-        else:
-            spine.append(f"<div class='phase'>{_e(_gname)}</div>")
-        for n in _decs:
-            st = n.get("status", "open")
-            you = "<span class='you'>← you are here</span>" if (mt and n.get("id") == mt.get("id")) else ""
-            pl_tag = "<span class='pill-tag'>◆ pillar</span>" if n.get("pillar") else ""
-            new_tag = "<span class='new-tag'>🆕 NEW</span>" if n.get("id") in _new_ids else ""
-            _g, _c = _dec_glyph(n)
-            # SUMMARY up front = one plain-language sentence (the `plain` field); fall back to the
-            # choice only if a decision hasn't got one yet (the lint flags those).
-            plain = _ec(n.get("plain", "")) or _gloss(_e(n.get("choice", "")), gmap)
-            # EXAMPLES go in a COLLAPSED foldable block — clear, indented, out of the way until opened.
-            ex = n.get("examples") or []
-            ex_html = ""
-            if ex:
-                rows = []
-                for x in ex:
-                    if isinstance(x, dict):  # {cap, code}: a caption + a real code block
-                        cap = _ec(x.get("cap", ""))
-                        code = _e(x.get("code", ""))
-                        rows.append(f"<div class='exitem'>"
-                                    + (f"<div class='excap'>{cap}</div>" if cap else "")
-                                    + f"<pre class='excode'>{code}</pre></div>")
-                    else:  # legacy string -> still put it in a code block, never loose prose
-                        rows.append(f"<div class='exitem'><pre class='excode'>{_e(str(x))}</pre></div>")
-                # examples OPEN by default — the whole point is to SEE them, not dig two folds down
-                ex_html = (f"<details class='draw' open><summary>examples ({len(ex)})</summary>"
-                           f"<div class='dex'>{''.join(rows)}</div></details>")
-            # ---- ANCHORS: the exact code this decision is reviewable against (baked at render
-            # time — see _resolve_anchors). The card gets a summary badge (⛓/⚠/✗) and an open fold
-            # with the pinned snippet(s); a BUILT decision with no anchor gets a loud red stub
-            # instead, so "nothing to review" is visible debt, not silence.
-            anc = [a for a in (n.get("_anchors") or []) if not a.get("paper")]
-            # base=project_home: viz is also spawned by the digest re-render with a foreign cwd,
-            # and a relative artifact path must not silently flip built -> unbuilt there.
-            _built = plan.artifact_exists(n, paths.project_home(name) or None)
-            _kinds = {a.get("kind") for a in anc}
-            if _kinds & {"missing"}:  # a pin pointing at nothing is broken, not green
-                anch_tag = "<span class='anch-tag miss'>✗ anchor broken</span>"
-            elif _kinds & {"drifted", "unreachable"}:
-                anch_tag = "<span class='anch-tag warn'>⚠ code drifted</span>"
-            elif anc:
-                anch_tag = "<span class='anch-tag ok'>⛓ code</span>"
-            elif _built:  # "paper" never excuses a BUILT decision: artifact on disk = there IS code
-                anch_tag = "<span class='anch-tag miss'>✗ no code to review</span>"
-            else:
-                anch_tag = ""
-            anc_html = ""
-            if anc:
-                arows = []
-                for a in anc:
-                    dif_html = ""
-                    if a.get("diff"):
-                        dlines = []
-                        for dl in a["diff"].splitlines():
-                            c = ("dfa" if dl.startswith("+") and not dl.startswith("+++") else
-                                 "dfr" if dl.startswith("-") and not dl.startswith("---") else "")
-                            dlines.append(f"<span class='{c}'>{_e(dl)}</span>" if c else _e(dl))
-                        dif_html = (f"<details class='draw'><summary>what changed since "
-                                    f"(pinned → working tree)</summary>"
-                                    f"<pre class='excode anccode'>{chr(10).join(dlines)}</pre></details>")
-                    note = f" — {_e(a['note'])}" if a.get("note") else ""
-                    cmd = (f"<div class='anccmd'>reproduce: <code>{_e(a['cmd'])}</code></div>"
-                           if a.get("cmd") else "")
-                    # line numbers live in a CSS counter gutter (non-selectable), NOT baked into
-                    # the text — so selecting/copying the slab yields clean code. counter-reset
-                    # seeds the first visible line number (code_start - 1, incremented per row).
-                    # A LONG slab folds shut by default (the caption + 'open this code' link above
-                    # stay visible); short ones render open so the code is there at a glance.
-                    if a.get("code"):
-                        _clines = a["code"].split("\n")
-                        _pre = ("<pre class='excode anccode' "
-                                f"style='counter-reset:acl {a.get('code_start', 1) - 1}'>"
-                                + "".join(f"<span class='cl'>{_e(l)}</span>\n" for l in _clines)
-                                + "</pre>")
-                        if len(_clines) > _ANCH_FOLD_LINES:
-                            code_html = (f"<details class='draw'><summary>show the {len(_clines)} "
-                                         f"lines</summary>{_pre}</details>")
-                        else:
-                            code_html = _pre
-                    else:
-                        code_html = ""
-                    # the click-through: open EXACTLY these lines at EXACTLY this commit on the
-                    # repo's web UI — the "take me to the code" button this whole feature is for
-                    link = (f"<a class='anclink' href='{_e(a['href'])}' target='_blank' "
-                            f"rel='noopener'>open this code ↗</a>" if a.get("href") else "")
-                    arows.append(f"<div class='exitem'>"
-                                 f"<div class='anccap'><code>{_e(a['loc'])}</code>{link}"
-                                 f"<br>{_e(a['cap'])}{note}</div>{code_html}{dif_html}{cmd}</div>")
-                anc_html = (f"<details class='draw' open><summary>⛓ the code behind this decision "
-                            f"({len(anc)})</summary><div class='dex'>{''.join(arows)}</div></details>")
-            elif _built:
-                anc_html = (f"<div class='anch-stub'>✗ built, but no anchor recorded — a reviewer "
-                            f"can't see WHICH code this is. Backfill: <code>python3 "
-                            f"$CLAUDE_PLUGIN_ROOT/research/anchor.py {_e(name)} {_e(n.get('id',''))} "
-                            f"&lt;file&gt;:&lt;start&gt;-&lt;end&gt;</code></div>")
-            # the dense original decision text also folds away — open only if you want the full rationale
-            _did = n.get("id", "")
-            choice_full = _gloss(_e(n.get("choice", "")), gmap)
-            choice_fold = (f"<details class='draw'><summary>full decision text</summary>"
-                           f"<div class='dchfull'{_eattr('decision', 'choice', n.get('choice',''), id=_did)}>"
-                           f"{choice_full}</div></details>") if choice_full else ""
-            # a decision that carries examples or anchored code opens by default so it's visible on load
-            dec_open = " open" if (ex or anc) else ""
-            spine.append(f"<details class='dec'{dec_open}><summary>"
-                         f"<span class='gl' style='color:{_c}'"
-                         f"{_eattr('decision', 'status', st, id=_did, type='select', opts='open,decided,verified', render='glyph')}>{_g}</span>"
-                         f"<span class='dsum'><span class='dq'"
-                         f"{_eattr('decision', 'decision', n.get('decision',''), id=_did)}>"
-                         f"{_gloss(_e(n.get('decision','')), gmap)}</span>{new_tag}{you}{pl_tag}{anch_tag}"
-                         f"<br><span class='dch'>{plain}</span></span></summary>"
-                         f"<div class='dwhy'><span class='pr'>{_e(n.get('principle',''))}</span> "
-                         f"<span class='dwhyt'{_eattr('decision', 'why', n.get('why',''), id=_did)}>"
-                         f"{_ec(n.get('why',''))}</span></div>"
-                         f"{ex_html}"
-                         f"{anc_html}"
-                         f"{choice_fold}"
-                         f"<div class='tl-quiz' data-dec=\"{_e(n.get('id',''))}\"></div>"
-                         f"<div class='tl-chat' data-dec=\"{_e(n.get('id',''))}\"></div></details>")
-        if _collapse:
-            spine.append("</details>")
-    spine.append("</div></div>")
-    dec_sec = [legend]
-    if planning:
-        dec_sec.append("".join(spine))
+    if any(g for _, g in _goal_groups):
+        goals_sec.append("<div class='card'>")
+        for _gt, _gdecs in _goal_groups:
+            if not _gdecs:
+                continue
+            goals_sec.append(f"<div class='phase'>{_e(_gt)} · {len(_gdecs)}</div>")
+            for n in _gdecs:
+                _g, _c = _dec_glyph(n)
+                you = ("<span class='you'>★ settle this next</span>"
+                       if (mt and n.get("id") == mt.get("id")) else "")
+                plain = _ec(n.get("plain", "")) or _ec(n.get("choice", ""))
+                goals_sec.append(f"<div class='go-row'><span class='gl' style='color:{_c}'>{_g}</span>"
+                                 f"<span class='dsum'><span class='dq'>{_ec(n.get('decision',''))}</span>{you}"
+                                 + (f"<br><span class='dch'>{plain}</span>" if plain else "")
+                                 + "</span></div>")
+        goals_sec.append("</div>")
     else:
-        dec_sec.append("<div class='cols'>")
-        dec_sec.append("".join(spine))
-        dec_sec.append("<div><h2 class='sec'>Search tree — the directions explored</h2>"
-                       "<div class='card' style='padding:12px 8px;overflow-x:auto'>")
-        dec_sec.append(tree_svg(nodes, knowledge, kinds, id2phase, phase_order))
-        dec_sec.append("</div></div>")
-        dec_sec.append("</div>")  # cols
+        goals_sec.append("<div class='card'><div class='empty'>All decisions settled and verified ✓ "
+                         "— nothing left on the plan.</div></div>")
 
     # ---- nav bar + sections: a tab only exists when its section has content; the glossary
     # (a one-line collapsed box) and the foot stay outside the tabs, always visible. ----
+    # 0.4.3: the report simplifies to 5 tabs — 📅 Timeline (absorbed 🎢 Now's surprises/newly-
+    # done/focus) · 🎛 Agents (working sessions) · 🧠 Skills · 🎯 Goals (absorbed the plan's
+    # open items + the review-debt line) · 🖍 Requests (the old outside-the-tabs feedback box +
+    # 🔧 To-process actions, unified). 🔀 Data & pipeline and 🧭 Decisions (spine + search tree)
+    # are un-wired from the report; their builders (data_section_html / pipeline_html /
+    # spine_groups / tree_svg) still render in the slides deck.
     secs = [(i, l, h) for i, l, h in (
-        ("sec-now", "🎢 Now", "".join(p for p in now_sec if p)),
-        ("sec-flow", "🔀 Data &amp; pipeline", "".join(p for p in flow_sec if p)),
         ("sec-timeline", "📅 Timeline", "".join(tl_sec)),
-        ("sec-decisions", "🧭 Decisions", "".join(dec_sec)),
-        # 🎛 Agents IS the unified "working sessions" surface (each request/task = one agent run).
-        # The old 🔧 To-process + 📋 Logbook tabs were a redundant second model of the same thing
-        # (operator: "to-process 和 logbook 属于重复的概念，应该就是 working sessions") — removed.
-        # Their render fns (toprocess_section_html / logbook_section_html) are kept but un-wired.
         ("sec-agents", "🎛 Agents", agents_section_html(name)),
+        ("sec-skills", "🧠 Skills", skills_section_html()),
+        ("sec-goals", "🎯 Goals", "".join(goals_sec)),
+        ("sec-requests", "🖍 Requests", requests_section_html(name)),
     ) if h.strip()]
     if len(secs) > 1:
         H.append("<div class='rnav'>" + "".join(
@@ -2647,7 +2538,6 @@ def render_html(name, goal, bar, pl, nodes, knowledge, kinds, id2phase, phase_or
     for k, (i, _l, h) in enumerate(secs):
         H.append(f"<section class='rsec{' on' if k == 0 else ''}' id='{i}'>{h}</section>")
 
-    H.append(feedback_section_html(name))
     H.append(glossary_html(glossary))
 
     H.append(f"<div class='foot'>Hansard · derived from research/plan.{_e(name)}.jsonl + "
@@ -2661,7 +2551,7 @@ def render_html(name, goal, bar, pl, nodes, knowledge, kinds, id2phase, phase_or
     H.append("<script>" + QUIZ_JS + "</script>")
     H.append("<script>" + NAV_JS + "</script>")
     H.append("<script>" + ANNOT_JS + "</script>")  # indexes the DOM the widgets built
-    H.append("<script>" + TOPROCESS_JS + "</script>")  # 🔧 To process tab adopt/dismiss buttons
+    H.append("<script>" + TOPROCESS_JS + "</script>")  # 🖍 Requests tab adopt/dismiss buttons
     H.append("<script>" + EDIT_JS + "</script>")   # last: arms the owner-only inline editor
     H.append("<script>" + AGENTS_JS + "</script>")  # 🎛 Agents board: composer + live status poll
     H.append("</body></html>")

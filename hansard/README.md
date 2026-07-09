@@ -84,7 +84,7 @@ hansard/
 │   ├── plan.workflow.js  internal engine for /hansard:plan (big-codebase offload; not its own command)
 │   ├── tree.py  governor.py  surfacer.py  lint.py  harvest.py  new_project.py
 │   ├── load.py              /hansard:load's deterministic half: source discovery · load-once manifest · digest · prompt→skill hint  (+ skills.example.jsonl)
-│   ├── viz.py               research-tree HTML (5-beat story · timeline · spine+tree); planning-stage mode before any run
+│   ├── viz.py               project report HTML — 5 tabs: Timeline · Agents · Skills · Goals · Requests (spine/tree/pipeline live on in the slides deck); planning-stage mode before any run
 │   ├── principles.jsonl     distilled project-AGNOSTIC laws (the refined layer)
 ├── commands/{plan,execute-and-report,use,load}.md
 ├── codex/hooks.json  install-codex.sh    Codex CLI port (apply_patch matcher, PreCompact harvest)

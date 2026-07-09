@@ -1,7 +1,12 @@
 #!/usr/bin/env python3
 """Tests for the research-lint: tree reconstruction, governor shape, surfacer coupling."""
+import os
 import sys
 from pathlib import Path
+
+# HERMETIC: pin the data root to this dir so the *.example.* fixtures here are what loads —
+# a REAL project named "example" in the user's data dir must never shadow them (or be touched).
+os.environ["HANSARD_DATA_DIR"] = str(Path(__file__).resolve().parent)
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import tree
@@ -10,6 +15,7 @@ import surfacer
 import plan
 import progress
 import viz
+import load
 
 
 def main():
@@ -26,8 +32,8 @@ def main():
     nodes = tree.build_tree(tree.load_annotations("example"), facts)
 
     check("loss-weights" in nodes, "loss-weights direction reconstructed")
-    check(nodes["loss-weights"]["status"] == "stalled",
-          f"loss-weights is STALLED (got {nodes['loss-weights']['status']})")
+    check(nodes.get("loss-weights", {}).get("status") == "stalled",
+          f"loss-weights is STALLED (got {nodes.get('loss-weights', {}).get('status')})")
     check(nodes["layout-chunk"]["status"] == "abandoned", "layout-chunk is ABANDONED (backtracked)")
     check(nodes["layout-stream"]["status"] == "deepening", "layout-stream is DEEPENING")
     check(nodes["nofreeze"]["status"] == "deepening", "nofreeze is DEEPENING")
@@ -93,23 +99,53 @@ def main():
     check("a plan in progress" in pln, "planning report uses the plan-in-progress subtitle")
     check("MOTIVATION" in pln and "MOTIVATION_PROBE_TEXT" in pln,
           "planning report leads with the motivation beat (from motivation.<name>.txt)")
-    check("Decisions — the plan" in pln, "planning report renders the decision spine as the map")
-    check("Pipeline — the system" not in pln,
+    check("Goals — the bar" in pln,
+          "planning report surfaces the open decisions in the 🎯 Goals tab")
+    check("Pipeline — the data flow" not in pln,
           "planning report DROPS the pipeline band (phases are categories, not a flow)")
     check("No dated events harvested" not in pln and "Timeline — how the search" not in pln,
           "planning report suppresses the empty timeline instead of showing an empty box")
     check("Search tree" not in pln,
           "planning report suppresses the empty search tree")
 
-    # A mature project (real log + tree) keeps the full rich view, untouched.
+    # A mature project (real log + tree): 5 tabs — Timeline · Agents · Skills · Goals · Requests.
+    # The spine/tree/pipeline are un-wired from the report (they live on in the slides deck).
     mat = viz.render_html("example", "Goal", "bar", pl, nodes, know, {}, {}, [], motivation="ignored")
-    check("Pipeline — the system" in mat, "mature report keeps the pipeline band")
+    check("Pipeline — the data flow" not in mat, "report un-wires the pipeline band (deck-only)")
     check("Timeline — how the search" in mat, "mature report keeps the timeline section")
-    check("Search tree" in mat, "mature report keeps the search tree")
+    check("Search tree" not in mat, "report un-wires the search tree (deck-only)")
+    check("sec-skills" in mat and "/hansard:plan" in mat,
+          "🧠 Skills tab lists the plugin's slash commands (scanned from commands/*.md)")
+    check("sec-goals" in mat and "Goals — the bar" in mat,
+          "🎯 Goals tab renders the DONE bar + what's left")
     check("a plan in progress" not in mat and "MOTIVATION_PROBE_TEXT" not in mat,
           "mature report does NOT switch to planning mode (and ignores motivation)")
 
-    total = 30
+    # --- load: inhale-once manifest diff + prompt→skill coupling ------------------------
+    # diff_sources is pure: a source keeps state `ingested` only while its content hash matches
+    # the manifest — new file -> new, edited file -> changed (so /hansard:load refreshes ONLY those).
+    man = {"sources": {"/p/CLAUDE.md": "aaaa", "/p/mem.md": "bbbb"}}
+    st = dict(load.diff_sources(
+        [("/p/CLAUDE.md", "aaaa"), ("/p/mem.md", "cccc"), ("/p/new.md", "dddd")], man))
+    check(st == {"/p/CLAUDE.md": "ingested", "/p/mem.md": "changed", "/p/new.md": "new"},
+          "diff_sources: unchanged->ingested, edited->changed, unseen->new")
+    check(all(s == "new" for _, s in load.diff_sources([("/p/a.md", "ee")], {})),
+          "diff_sources against an empty manifest marks everything new (never loaded)")
+    # skill_hits couples a PROMPT to a loaded skill via match keywords (surfacer-style, substring)
+    sk = tree._load_jsonl(Path(__file__).resolve().parent / "skills.example.jsonl")
+    check(len(sk) >= 2 and all(s.get("id") and s.get("how") and s.get("match") for s in sk),
+          "skills.example loads and every skill has id + how + match keywords")
+    hit = load.skill_hits("example", "kick off a quick single-gpu SFT smoke run first", skills=sk)
+    check(any(s["id"] == "launch-single-gpu-sft" for s in hit),
+          "skill_hits: a task prompt matches the loaded launch procedure")
+    check(load.skill_hits("example", "totally unrelated question about lunch", skills=sk) == [],
+          "skill_hits: an unrelated prompt matches nothing (no noise)")
+    # the memory-dir slug must reproduce Claude Code's flattening ('/'->'-', '.'->'-')
+    check(load.memory_dir("/home/u/.claude/x").name == "memory"
+          and load.memory_dir("/home/u/.claude/x").parent.name == "-home-u--claude-x",
+          "memory_dir flattens the project home the way Claude Code does")
+
+    total = 38
     print(f"\n{total - fails}/{total} passed")
     sys.exit(1 if fails else 0)
 

@@ -1287,7 +1287,7 @@ ANNOT_JS = r"""
         .then(function(j){
           if(!digestBusy)return;
           if(j.state==='done'){
-            var cleared=(synced&&digestHandledIds.length)?digestHandledIds.length:0;
+            var cleared=(!fbDead&&digestHandledIds.length)?digestHandledIds.length:0;
             if(cleared)clearRequests(digestHandledIds);  // handled -> summarized to Timeline -> clear
             endDigest('✅ done'+(cleared?' — '+cleared+' request(s) handled, summarized to the Timeline &amp; cleared':'')+
               '. <a href="javascript:location.reload()">reload the report</a>'+

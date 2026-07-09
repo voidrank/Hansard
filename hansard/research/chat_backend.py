@@ -389,7 +389,7 @@ def start_digest(project):
         # lands the safe part. Needs a specific project. CLASSIC: the cheap one-shot codex classify
         # (viz.py --digest), also the fallback when no project is named. TRAINLINT_DIGEST_MODE=classic
         # forces the cheap path.
-        mode = env.get("TRAINLINT_DIGEST_MODE", "agentic").strip().lower()
+        mode = env.get("HANSARD_DIGEST_MODE") or env.get("TRAINLINT_DIGEST_MODE", "agentic").strip().lower()
         if mode == "agentic" and project:
             args = [sys.executable, str(ROOT / "feedback_agent.py"), project]
         else:

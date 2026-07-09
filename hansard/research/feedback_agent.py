@@ -291,12 +291,54 @@ def _log_update(project, results, added):
         pass
 
 
+def _pull_and_fold(project):
+    """Bring this project's SERVER-queued feedback (what the report page synced via POST
+    /api/feedback) into the LOCAL comments/clarify substrate so collect_new sees it — the agentic
+    run's equivalent of the classic digest's pull+fold (viz.digest_feedback). Without this the
+    agent only ever saw local files and a browser-submitted request digested to 'no new feedback'.
+    The blob body is UNTRUSTED; its project is strict-allowlisted before touching any path, exactly
+    like the classic path + the worker. Returns the consumed blob keys (delete once handled)."""
+    import re as _re
+    try:
+        import push, viz
+        pulled = push.pull_feedback()
+    except Exception:
+        return []
+    def _safe(v):
+        v = str(v or "").strip()
+        return v if _re.fullmatch(r"[A-Za-z0-9._-]{1,128}", v) else ""
+    consumed = []
+    for key, blob in (pulled or []):
+        if not isinstance(blob, dict):
+            continue
+        if (_safe(blob.get("project")) or project) != project:
+            continue  # a per-project run folds only ITS blobs; others wait for their own run
+        try:
+            viz._fold_blob(project, blob)   # -> comments/clarify/glossary.<project>.jsonl (deduped)
+            consumed.append(key)
+        except Exception:
+            pass
+    return consumed
+
+
+def _consume(keys):
+    for key in keys:
+        try:
+            import push
+            push.delete_feedback(key)
+        except Exception:
+            pass
+
+
 def run(project):
-    """Orchestrate the agentic digest for one project: one read-only agent per NEW feedback item
-    (bounded concurrency), then a serial deterministic apply. Returns a summary dict."""
+    """Orchestrate the agentic digest for one project: pull the server-queued requests into the
+    local substrate, then one read-only agent per NEW feedback item (bounded concurrency), then a
+    serial deterministic apply. Returns a summary dict."""
+    consumed = _pull_and_fold(project)  # server queue -> local, so collect_new sees browser requests
     items, recs = feedback.collect_new(project)
     # collect_new returns (llm_item_strings, skeleton_records); we want the rich records
     if not recs:
+        _consume(consumed)  # folded blobs were already-digested dupes -> drain them from the queue
         _status({"state": "done", "project": project, "summary": f"{project}: no new feedback"})
         return {"project": project, "items": 0, "applied": 0, "pending": 0}
     sub_dirs = _repo_dirs(project)
@@ -329,8 +371,9 @@ def run(project):
     try:
         import viz
         viz.generate(project)  # re-render + re-upload with the applied glossary + verdict box
+        _consume(consumed)     # delete server blobs ONLY after fold+digest+apply+regen all succeeded
     except Exception as e:
-        summary += f"  [regen failed: {str(e)[:120]}]"
+        summary += f"  [regen failed: {str(e)[:120]}]"  # keep blobs for retry
     _status({"state": "done", "mode": "agentic", "project": project, "summary": summary,
              "finished": _t.time()})
     print(summary)

@@ -15,6 +15,12 @@ import urllib.parse
 import urllib.error
 from pathlib import Path
 
+# Cloudflare's bot filter 403s the default "Python-urllib" User-Agent — push_report already spoofs a
+# browser UA for that reason; pull_feedback/delete_feedback MUST do the same or every feedback GET/
+# DELETE silently 403s (the "no new feedback" bug). One shared constant so all three agree.
+_UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+       "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+
 
 def get_or_create_token() -> str:
     """Read or generate a secure, persistent 32-character local token."""
@@ -123,7 +129,7 @@ def pull_feedback():
     if not token:
         return []
     req = urllib.request.Request(f"{server}/api/feedback",
-                                 headers={"Authorization": f"Bearer {token}"})
+                                 headers={"Authorization": f"Bearer {token}", "User-Agent": _UA})
     try:
         with urllib.request.urlopen(req, timeout=30) as r:
             items = json.loads(r.read().decode("utf-8"))
@@ -146,7 +152,7 @@ def delete_feedback(key: str) -> bool:
         return False
     req = urllib.request.Request(
         f"{server}/api/feedback?key={urllib.parse.quote(key, safe='')}",
-        headers={"Authorization": f"Bearer {token}"}, method="DELETE")
+        headers={"Authorization": f"Bearer {token}", "User-Agent": _UA}, method="DELETE")
     try:
         with urllib.request.urlopen(req, timeout=15) as r:
             return r.status == 200

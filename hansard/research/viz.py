@@ -638,6 +638,21 @@ abbr.gl-term{text-decoration:underline dotted var(--mut);text-underline-offset:2
 .fb-done{color:var(--ok);font-weight:700;font-size:11px;margin-top:2px}
 .fb-wl{margin-top:4px}.fb-wl summary{cursor:pointer;color:var(--acc-ink);font-size:11px;font-weight:600}
 .fb-wl pre{white-space:pre-wrap;background:var(--paper);border:1px solid var(--line2);border-radius:8px;padding:8px 10px;font-size:11px;line-height:1.45;margin:4px 0 2px;overflow-x:auto;font-family:var(--mono)}
+/* 📋 Logbook tab — the agentic-digest request-handling record */
+.lb-intro{color:var(--mut);font-size:12.5px;line-height:1.5;margin:2px 0 14px}
+.lb-runs{display:flex;flex-direction:column;gap:5px;margin-bottom:14px}
+.lb-run{font-size:12px;color:var(--ink2);background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:6px 10px}
+.lb-date{color:var(--acc-ink);font-weight:600;margin-right:6px}
+.lb-tally{font-size:11.5px;font-weight:600;color:var(--ink3);text-transform:uppercase;letter-spacing:.05em;margin:2px 0 10px}
+.lb-card{border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:10px;padding:10px 13px;margin-bottom:10px;background:var(--bg)}
+.lb-card.done{opacity:.62}
+.lb-head{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.lb-status{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em}
+.lb-status.pend{color:var(--warn,#b45309)}.lb-status.done{color:var(--ok,#16a34a)}
+.lb-req{font-size:13px;color:var(--ink);line-height:1.45}.lb-req b{color:var(--ink)}
+.lb-diag{font-size:12px;color:var(--mut);margin-top:5px;line-height:1.5}
+.lb-vl{font-size:12px;font-weight:600;margin-top:5px;color:var(--ink2)}
+.lb-res{font-size:12px;color:var(--ink3);margin-top:4px}
 """
 
 
@@ -1988,6 +2003,63 @@ def feedback_section_html(name):
         return ""  # feedback is an annotation layer — it must never take the report down
 
 
+def logbook_section_html(name):
+    """📋 Logbook — the full record of every "Deal with all requests" digest: which requests came
+    in, what the per-request read-only agent concluded (grounded in the real code), and what it did
+    — auto-applied glossary, or a pending correction/readability PROPOSAL awaiting your review.
+    Reads the run events feedback_agent._log_update wrote to log.<name>.jsonl + the per-request
+    verdicts in feedback.<name>.jsonl. Renders only when there IS agentic-digest history (so a
+    project that never used the button has no empty tab). Never raises."""
+    try:
+        runs = [e for e in tree._load_jsonl(paths.resolve(f"log.{name}.jsonl"))
+                if isinstance(e, dict) and e.get("kind") == "update"]
+        fb = [e for e in tree._load_jsonl(paths.resolve(f"feedback.{name}.jsonl"))
+              if isinstance(e, dict) and e.get("agentic")]
+        if not runs and not fb:
+            return ""  # no agentic history -> no Logbook tab
+        col = {"confusion": "#a84a2f", "correction": "#b91c1c", "readability": "#92400e"}
+        out = ["<h2 class='sec'>📋 Logbook — how your requests were handled</h2>",
+               "<p class='lb-intro'>Every “🤖 Deal with all requests” run: one read-only agent per "
+               "request investigated the real code, then a deterministic step applied the safe part "
+               "(glossary) and left corrections/readability as proposals for your review.</p>"]
+        if runs:  # the run history — one line per digest
+            out.append("<div class='lb-runs'>")
+            for e in sorted(runs, key=lambda r: str(r.get("ts") or "")):
+                note = str(e.get("note") or "").replace("🤖 Deal with all requests — ", "")
+                out.append(f"<div class='lb-run'><span class='lb-date'>🤖 {_e(str(e.get('ts') or ''))}</span> "
+                           f"{_ec(note)}</div>")
+            out.append("</div>")
+        pend = sum(1 for e in fb if not e.get("resolved"))
+        out.append(f"<div class='lb-tally'>{len(fb)} request(s) handled · "
+                   f"{sum(1 for e in fb if e.get('resolved'))} applied · {pend} pending your review</div>")
+        for e in fb:  # per-request cards, newest last (file order = digest order)
+            k = str(e.get("kind") or "unclassified")
+            done = bool(e.get("resolved"))
+            verdict = str(e.get("claim_verdict") or "")
+            status = "✓ applied" if done else "⏳ pending your review"
+            vline = ""
+            if k == "correction" and verdict in ("operator_right", "operator_wrong"):
+                vline = ("🤖 verified you were RIGHT — fix proposed" if verdict == "operator_right"
+                         else "🤖 verified you were WRONG — refused, with evidence")
+            prop = str(e.get("proposal") or "")
+            res = str(e.get("resolution") or "")
+            out.append(
+                "<div class='lb-card" + (" done" if done else "") + "'>"
+                f"<div class='lb-head'><span class='fb-kind' style='background:{col.get(k, '#7d7566')}'>{_e(k)}</span>"
+                f"<span class='lb-status {'done' if done else 'pend'}'>{_e(status)}</span></div>"
+                f"<div class='lb-req'>“{_e(_trunc(str(e.get('quote') or ''), 120))}” — "
+                f"<b>{_ec(str(e.get('note') or ''))}</b></div>"
+                + (f"<div class='lb-diag'>{_ec(_trunc(str(e.get('insight') or ''), 400))}</div>" if e.get("insight") else "")
+                + (f"<div class='lb-vl'>{_e(vline)}</div>" if vline else "")
+                + (f"<div class='lb-res'>→ {_ec(res)}</div>" if res else "")
+                + (f"<details class='fb-wl'><summary>🤖 proposal / worklog</summary>"
+                   f"<pre>{_e(_trunc(prop, 1800))}</pre></details>" if prop else "")
+                + "</div>")
+        return "".join(out)
+    except Exception:
+        return ""
+
+
 def render_html(name, goal, bar, pl, nodes, knowledge, kinds, id2phase, phase_order,
                 glossary=None, clarify=None, motivation="", tldr="", surprises=None, purpose="",
                 narrative=""):
@@ -2329,6 +2401,7 @@ def render_html(name, goal, bar, pl, nodes, knowledge, kinds, id2phase, phase_or
         ("sec-flow", "🔀 Data &amp; pipeline", "".join(p for p in flow_sec if p)),
         ("sec-timeline", "📅 Timeline", "".join(tl_sec)),
         ("sec-decisions", "🧭 Decisions", "".join(dec_sec)),
+        ("sec-logbook", "📋 Logbook", logbook_section_html(name)),  # agentic-digest request handling
     ) if h.strip()]
     if len(secs) > 1:
         H.append("<div class='rnav'>" + "".join(

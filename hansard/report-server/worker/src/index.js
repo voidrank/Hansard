@@ -498,6 +498,11 @@ export default {
       if (rSub === "/edit" && targetNs !== ns) return text("editing is owner-only", 403);
       if ((rSub === "/digest" || rSub === "/digest/status") && targetNs !== ns)
         return text("digest is owner-only", 403);
+      // /resolve (Requests-tab adopt/dismiss) mutates the operator's substrate exactly like /edit;
+      // /task/* (🎛 Agents tab) creates board tasks + spends the operator's compute like /digest.
+      if (rSub === "/resolve" && targetNs !== ns) return text("resolving is owner-only", 403);
+      if ((rSub === "/task/create" || rSub === "/task/status") && targetNs !== ns)
+        return text("tasks are owner-only", 403);
       if (!(await agentConnected(targetNs, env))) return text("operator offline", 503);
       return relayToAgent(targetNs, rest, request, env);
     }
@@ -559,6 +564,49 @@ export default {
         if (targetNs !== ns) return text("digest is owner-only", 403);
         if (!(await agentConnected(targetNs, env))) return text("operator offline", 503);
         return relayToAgent(targetNs, `/digest${digRoute[2] || ""}${url.search}`, request, env);
+      }
+    }
+
+    // ---- Requests tab adopt/dismiss: OWNER-ONLY /resolve relay -----------------------------------
+    // Same two flat/namespaced shapes and the same rule as /edit — an adopt applies the agent's
+    // proposed_edits into the operator's LOCAL substrate, so no admin bypass, no shared-grant bypass.
+    if (path === "/resolve" && request.method === "POST") {
+      const targetNs = ns;  // flat: the target is, by construction, the caller's own ns
+      if (!(await agentConnected(targetNs, env))) return text("operator offline", 503);
+      return relayToAgent(targetNs, `/resolve${url.search}`, request, env);
+    }
+    const resRoute = path.match(/^\/([^\/]+)\/resolve$/);
+    if (resRoute && request.method === "POST") {
+      let email = "";
+      try { email = decodeURIComponent(resRoute[1]).trim().toLowerCase(); } catch { email = ""; }
+      if (email.includes("@") && email.length <= 254 && !email.includes("/")) {
+        const targetNs = await nsForEmail(email);
+        if (targetNs !== ns) return text("resolving is owner-only", 403);
+        if (!(await agentConnected(targetNs, env))) return text("operator offline", 503);
+        return relayToAgent(targetNs, `/resolve${url.search}`, request, env);
+      }
+    }
+
+    // ---- 🎛 Agents tab: OWNER-ONLY task board relay ----------------------------------------------
+    // POST /task/create spawns a Claude-Code agent on the operator's machine (compute + local task
+    // files — same cost rationale as /digest); GET /task/status polls the board. Flat /task/* is two
+    // segments, so it must sit BEFORE the /<email>/<seg> matcher; the namespaced /<email>/task/* is
+    // three segments and would otherwise fall through to 404.
+    if ((path === "/task/create" && request.method === "POST")
+        || (path === "/task/status" && request.method === "GET")) {
+      const targetNs = ns;  // flat: the target is, by construction, the caller's own ns
+      if (!(await agentConnected(targetNs, env))) return text("operator offline", 503);
+      return relayToAgent(targetNs, `${path}${url.search}`, request, env);
+    }
+    const taskRoute = path.match(/^\/([^\/]+)\/task\/(create|status)$/);
+    if (taskRoute && request.method === (taskRoute[2] === "status" ? "GET" : "POST")) {
+      let email = "";
+      try { email = decodeURIComponent(taskRoute[1]).trim().toLowerCase(); } catch { email = ""; }
+      if (email.includes("@") && email.length <= 254 && !email.includes("/")) {
+        const targetNs = await nsForEmail(email);
+        if (targetNs !== ns) return text("tasks are owner-only", 403);
+        if (!(await agentConnected(targetNs, env))) return text("operator offline", 503);
+        return relayToAgent(targetNs, `/task/${taskRoute[2]}${url.search}`, request, env);
       }
     }
 

@@ -1,2 +1,2 @@
-Generalize the report's per-DECISION chatbot (the '💬 Ask about this' widget, today only on decision blocks -- viz.py tl-chat/DATA.decisions) into a per-BLOCK chatbot, so EVERY report section -- DATA, CURRENT FOCUS, pipeline, the story beats, the 🆕 Newly-done bar -- carries its own grounded Q&A [block-coverage]. Each block gets a grounding context blob (title + its rendered text) in the tl-data JSON [block-context-blob], and one generalized widget answers from THAT block + goal + glossary via the same browser-side Anthropic call [generic-widget].
-DONE = every listed block renders an 'Ask about this' button; clicking opens a browser-side chat grounded in that block's content; a per-block memory persists in localStorage; and the existing per-decision chatbot still works unchanged (no regression).
+把 hansard 报告里的问答小助手从决策区扩展到每个区块，让读者能针对任何章节直接提问。
+DONE = 每个区块都出现“问这个”入口，点击后基于该区块内容在当前页直接问答，原有决策区功能保持原样。

@@ -1,0 +1,5 @@
+# Project PLAN: the ordered DECISIONS that define this run, each tagged with the
+# transferable PRINCIPLE that governs it. Draft it with /hansard:plan. See plan.example.jsonl.
+# fields: id | phase | decision | choice | principle | why | status(open|decided|verified) | match(regex)
+#         + artifact (path/glob the choice produced -> BUILT) + anchors (the REVIEWABLE code:
+#         "file:start-end@commit" — record with research/anchor.py; "paper" = prose-only)

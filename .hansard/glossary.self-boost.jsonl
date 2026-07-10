@@ -1,0 +1,4 @@
+{"term": "hansard", "plain": "产品名——英国议会的逐字会议记录。这个项目把 agent 的工作留成报告形态的记录:项目像论坛发帖,agent 收尾是帖子,操作者批注是回复,验证过的决策是采纳答案。", "why": "名字本身就是产品哲学(work, on the record);swarm/quorum/witan/acta 等候选都因撞名淘汰"}
+{"term": "anchor", "plain": "把一条 BUILT 决策钉到具体代码(file:lines@commit),报告直接烤入该代码片段和漂移 diff,供人 review。", "why": "操作者要求每个 item 都能定位到一段 code 或一个 commit;gate G 会打回没有 anchor 的新建成项"}
+{"term": "substrate", "plain": "项目的记忆文件层(plan/log/knowledge/skills/glossary 等 <kind>.<name>.jsonl),现在存放在项目仓库的 .hansard/ 目录里随 git 版本化。", "why": "报告只渲染 substrate——没写进 substrate 的发现不会出现在报告里"}
+{"term": "agentic digest", "plain": "『处理所有请求』按钮背后的流水线:kimi 批量分析操作者留言并拟出工单,只读 claude agent 查代码核实,kimi 再把结论重写成人话上报告;所有写操作留给确定性 Python 或人。", "why": "2026-07-10 起的默认模式;根治了 claude 调查员直接把技术腔写上报告导致的『根本就不可读』"}

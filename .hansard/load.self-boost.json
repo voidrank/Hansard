@@ -1,0 +1,19 @@
+{
+  "ts": "2026-07-10T07:34:27+00:00",
+  "first_ts": "2026-07-10T07:34:27+00:00",
+  "sources": {
+    "/home/shiyil/.claude/projects/-home-shiyil-Trainlint/memory/MEMORY.md": "ce5d61a5376b116a",
+    "/home/shiyil/.claude/projects/-home-shiyil-Trainlint/memory/anchors-review-evidence.md": "b1b5b3303f8486b1",
+    "/home/shiyil/.claude/projects/-home-shiyil-Trainlint/memory/digest-kimi-triage-board-pipeline.md": "b6f840a2dfc9a080",
+    "/home/shiyil/.claude/projects/-home-shiyil-Trainlint/memory/llm-split-kimi-renders-claude-works.md": "7f568dde4acead33",
+    "/home/shiyil/.claude/projects/-home-shiyil-Trainlint/memory/multiagent-board-design.md": "82d788e8b4582804",
+    "/home/shiyil/.claude/projects/-home-shiyil-Trainlint/memory/rename-trainlint-to-hansard.md": "967ac12e0b7698c3",
+    "/home/shiyil/.claude/projects/-home-shiyil-Trainlint/memory/report-5tab-redesign.md": "228ded0ef1335dc6",
+    "/home/shiyil/.claude/projects/-home-shiyil-Trainlint/memory/report-feedback-loop.md": "66865f09cb64697a",
+    "/home/shiyil/.claude/projects/-home-shiyil-Trainlint/memory/report-surface-plain-evidence-folded.md": "b4364cefb249611a",
+    "/home/shiyil/.claude/projects/-home-shiyil-Trainlint/memory/rules-single-source-adapters.md": "d2d7fffed0223d1b",
+    "/home/shiyil/.claude/projects/-home-shiyil-Trainlint/memory/tldr-feature-stranded-0331-cache.md": "14bfe54c2b421825",
+    "/home/shiyil/.claude/projects/-home-shiyil-Trainlint/memory/trainlint-deploy-cache-data.md": "1d1f6d517b6944fa",
+    "/home/shiyil/.claude/projects/-home-shiyil-Trainlint/memory/trainlint-execute-no-requiz-report-gap.md": "d5546aa268cd6844"
+  }
+}

@@ -1,7 +1,9 @@
 # Cloudflare Worker: the multi-tenant hansard report service.
 # Deploy:  wrangler deploy   (after the setup steps in ../README.md)
 
-name = "hansard-report-server"
+# GRANDFATHERED (state-continuity): the live worker + its AGENTS Durable Object storage live under
+# this name — deploying under a new name creates an EMPTY worker the domain isn't bound to.
+name = "trainlint-report-server"
 main = "src/index.js"
 compatibility_date = "2024-11-01"
 workers_dev = false

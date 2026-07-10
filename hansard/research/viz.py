@@ -703,9 +703,20 @@ CHAT_CSS = """
 .tl-bar .tl-digest{background:var(--ink);color:#fff;border-color:var(--ink)}
 .tl-bar .tl-digest:hover{background:#3a362e}
 .tl-bar .tl-digest:disabled{opacity:.6;cursor:default}
-.tl-digbox{position:fixed;right:14px;bottom:58px;z-index:60;max-width:min(360px,92vw);background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:11px 14px;font-size:12.5px;line-height:1.5;color:var(--ink);box-shadow:0 8px 24px rgba(28,26,22,.16)}
-.tl-digbox a{color:var(--acc-ink);font-weight:700}
-@media print{.tl-bar,.tl-digbox{display:none}}
+/* the digest LOG PANEL — a full-height drawer on the report's right edge. Slides out when "Deal
+   with all requests" runs and streams the run's log (process output + each agent's live actions);
+   📜 on the toolbar reopens it any time to read the last run. */
+.tl-digpanel{position:fixed;top:0;right:0;bottom:0;z-index:80;width:min(420px,94vw);background:var(--surface);border-left:1px solid var(--line);box-shadow:-10px 0 28px rgba(28,26,22,.18);display:flex;flex-direction:column;transform:translateX(105%);transition:transform .25s ease}
+.tl-digpanel.open{transform:none}
+.tl-dp-head{display:flex;align-items:center;gap:8px;padding:12px 14px;border-bottom:1px solid var(--line);font-weight:700;font-size:13.5px;color:var(--ink)}
+.tl-dp-x{margin-left:auto;border:1px solid var(--line);background:none;border-radius:8px;cursor:pointer;font-size:13px;padding:2px 9px;color:inherit}
+.tl-dp-status{padding:10px 14px;font-size:12.5px;line-height:1.55;color:var(--ink);border-bottom:1px dashed var(--line)}
+.tl-dp-status:empty{display:none}
+.tl-dp-status a{color:var(--acc-ink);font-weight:700}
+.tl-dp-log{flex:1;overflow-y:auto;padding:10px 14px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;line-height:1.6;color:#64748b}
+.tl-dp-log div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tl-dp-empty{color:#94a3b8}
+@media print{.tl-bar,.tl-digpanel{display:none}}
 """
 
 # Plain string (NOT an f-string) — the JS keeps its own braces/backticks. It reads the
@@ -1273,9 +1284,10 @@ ANNOT_JS = r"""
   // (/r/<ns>/, /<email>/, flat, loopback) exactly like the chat + edit endpoints do. ---
   // The button lives PERMANENTLY on the toolbar (digBtn, set in drawer()) — NOT inside the notes
   // popup, which only opens when there are notes, so a user with zero notes could never reach it.
-  // Status shows in a floating box (digBox) just above the toolbar. Both are stable nodes, so no
-  // stale-lookup dance; digestBusy gates re-entry.
-  var digestBusy=false,digMsgHtml='',digBtn=null,digBox=null,digestHandledIds=[];
+  // Status + the run's LOG show in the right-edge log panel (digPanel): it slides out when a run
+  // starts, accumulates every log/activity line the status poll carries, and 📜 reopens it later.
+  // All stable nodes, so no stale-lookup dance; digestBusy gates re-entry.
+  var digestBusy=false,digBtn=null,digPanel=null,digestHandledIds=[],digSeen={},digLogN=0;
   var DIG_LABEL='🤖 Deal with all requests';
   // once a digest LANDS, the handled requests have been submitted + recorded (their outcome is now a
   // Timeline 'update' event + any glossary/pending verdicts) — so clear them for a fresh slate. Only
@@ -1289,11 +1301,46 @@ ANNOT_JS = r"""
     lastSync=fbPayload()||'';  // the now-smaller set must not look like a fresh change to re-sync
     refreshCount();
   }
-  function _digBox(){
-    if(!digBox){digBox=document.createElement('div');digBox.className='tl-digbox';digBox.style.display='none';document.body.appendChild(digBox);}
-    return digBox;
+  function _digPanel(){
+    if(!digPanel){
+      digPanel=document.createElement('div');digPanel.className='tl-digpanel';
+      digPanel.innerHTML='<div class="tl-dp-head">🤖 Deal with all requests — log'+
+        '<button class="tl-dp-x" type="button" title="close">✕</button></div>'+
+        '<div class="tl-dp-status"></div>'+
+        '<div class="tl-dp-log"><div class="tl-dp-empty">no log yet — run 🤖 Deal with all requests.</div></div>';
+      document.body.appendChild(digPanel);
+      digPanel.querySelector('.tl-dp-x').onclick=function(){digPanel.classList.remove('open')};
+    }
+    return digPanel;
   }
-  function setDst(html){digMsgHtml=html;var n=_digBox();if(html){n.innerHTML=html;n.style.display='block';}else{n.style.display='none';}}
+  function setDst(html){var p=_digPanel();p.querySelector('.tl-dp-status').innerHTML=html||'';if(html)p.classList.add('open');}
+  // append new log lines (dedup by exact text — each poll carries a rolling tail, so most lines
+  // repeat between polls); DOM stays bounded; autoscroll pins to the newest line.
+  function appendLog(lines){
+    if(!lines||!lines.length)return;
+    var lg=_digPanel().querySelector('.tl-dp-log'),added=false;
+    for(var i=0;i<lines.length;i++){
+      var l=String(lines[i]); if(!l.trim()||digSeen[l])continue; digSeen[l]=1;
+      var em=lg.querySelector('.tl-dp-empty'); if(em)em.remove();
+      var d=document.createElement('div');d.textContent=l;d.title=l;lg.appendChild(d);added=true;
+      if(++digLogN>500&&lg.firstChild)lg.removeChild(lg.firstChild);
+    }
+    if(added)lg.scrollTop=lg.scrollHeight;
+  }
+  function clearLog(){digSeen={};digLogN=0;_digPanel().querySelector('.tl-dp-log').innerHTML='';}
+  // open the panel by hand (📜 / a click while a run is live). Idle -> one-shot status fetch so it
+  // shows the LAST run's summary + log instead of an empty pane.
+  function openPanel(){
+    _digPanel().classList.add('open');
+    if(digestBusy)return;
+    fetch('digest/status?project='+encodeURIComponent(proj),{credentials:'same-origin'})
+      .then(function(r){return r.json()})
+      .then(function(j){
+        if(digestBusy)return;
+        if(j.summary)setDst(esc(String(j.summary)).slice(0,300));
+        appendLog(j.log||[]);appendLog(j.activity||[]);
+      }).catch(function(){});
+  }
   function setDb(label,disabled){if(digBtn){digBtn.textContent=label;digBtn.disabled=!!disabled;}}
   function endDigest(html){digestBusy=false;setDst(html);setDb(DIG_LABEL,false);}
   function pollDigest(n){
@@ -1313,23 +1360,28 @@ ANNOT_JS = r"""
             var lastRun=(!cleared&&j.last_run_ts)?('<br>nothing new to process — the previous digest handled '+
               (j.last_run_n||'?')+' request(s) ('+esc(String(j.last_run_ts))+'); their verdicts are in the '+
               '&ldquo;🖍 Operator requests&rdquo; box in this report.'):'';
+            appendLog(j.log||[]);appendLog(j.activity||[]);appendLog(['✅ done']);
             endDigest('✅ done'+(cleared?' — '+cleared+' request(s) handled, summarized to the Timeline &amp; cleared':'')+
               '. <a href="javascript:location.reload()">reload the report</a>'+lastRun+
               (j.summary?'<br>'+esc(String(j.summary)).slice(0,240):''));
           }else if(j.state==='error'){
+            appendLog(['✗ '+String(j.error||'digest failed')]);
             endDigest('✗ digest failed: '+esc(String(j.error||'unknown')).slice(0,200));
           }else{
             var prog=(j.total?(' — agent '+(j.done||0)+'/'+j.total):'');  // agentic: per-feedback agents
             setDst('🤖 digesting on the operator machine…'+prog+' ('+((n+1)*5)+'s; per-feedback agents can take a few minutes)');
+            // the log panel streams WHAT is happening: the run's process log (j.log) + each live
+            // agent's transcript tail (j.activity), both tailed server-side into the status poll
+            appendLog(j.log||[]);appendLog(j.activity||[]);
             pollDigest(n+1);
           }
         }).catch(function(){pollDigest(n+1);});
     },5000);
   }
   function runDigest(){
-    if(digestBusy)return;  // one loop only; the button is disabled while busy anyway
+    if(digestBusy){openPanel();return;}  // one loop only — a second click just re-opens the log
     digestHandledIds=load().map(function(a){return a.id});  // snapshot to clear on done (not later adds)
-    digestBusy=true;setDb('🤖 working…',true);setDst('⇪ syncing your feedback to the server…');
+    digestBusy=true;clearLog();setDb('🤖 working…',true);setDst('⇪ syncing your feedback to the server…');
     fbDead=false;
     var flush=null;try{flush=fbSync();}catch(e){}
     (flush||Promise.resolve()).then(function(){
@@ -1368,6 +1420,10 @@ ANNOT_JS = r"""
     digBtn=document.createElement('button');digBtn.type='button';digBtn.className='tl-digest';
     digBtn.textContent=DIG_LABEL;digBtn.onclick=runDigest;
     bar.insertBefore(digBtn,b.nextSibling);
+    // 📜 reopens the right-edge log panel any time (idle -> it fetches the last run's log)
+    var lgBtn=document.createElement('button');lgBtn.type='button';lgBtn.textContent='📜';
+    lgBtn.title='digest log';lgBtn.onclick=openPanel;
+    bar.insertBefore(lgBtn,digBtn.nextSibling);
     if(digestBusy){setDb('🤖 working…',true);}  // survive a toolbar rebuild mid-run
     b.onclick=function(){
       var anns=load();
@@ -2005,6 +2061,9 @@ AGENTS_JS = r"""
     el.querySelector('.ag-badge').textContent={done:'✅',running:'⏳',error:'✗',queued:'•'}[t.state]||'•';
     el.querySelector('.ag-title').textContent=t.title||t.id;
     el.querySelector('.ag-state').textContent=t.state;
+    // live peek while the agent works: the last transcript line (what it's reading/thinking now)
+    if(t.state==='running'&&t.activity&&t.activity.length)
+      el.querySelector('.ag-peek').textContent=t.activity[t.activity.length-1];
   }
   function poll(n){
     if(!polling)return;
@@ -2152,6 +2211,10 @@ TASKS_JS = r"""
           el.className='ag-card ag-'+t.state+' tk-card';
           el.querySelector('.ag-badge').textContent={done:'✅',running:'⏳',error:'✗',queued:'•'}[t.state]||'•';
           el.querySelector('.ag-state').textContent=t.state;
+          // the waiting line becomes a live log line while the agent works
+          var w=el.querySelector('.tk-wait');
+          if(w&&t.state==='running'&&t.activity&&t.activity.length)
+            w.textContent=t.activity[t.activity.length-1];
         });
         var c=j.counts||{}, pending=(c.running||0)+(c.queued||0);
         if(j.state==='running'||pending>0){

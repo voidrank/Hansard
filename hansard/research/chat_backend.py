@@ -479,6 +479,57 @@ def resolve_feedback(project, key, action):
 # GET /digest/status serves the tiny status file the digest run maintains (viz._digest_status_write),
 # which is how the report page's poll sees running -> done/error. The worker owner-gates both routes
 # before relaying; locally _auth + _allowed still apply like every other route.
+def _digest_activity(project, max_agents=3, per_agent=4):
+    """Live log tail for a RUNNING digest: the last few activity lines of every agent transcript
+    written in the last 15 min, newest agent first, labeled by run dir. Covers both engines —
+    kimi-pipeline board agents (agent_runs/) and legacy agentic (feedback_runs/). Flat string
+    list so the report's log panel renders it directly; [] on anything unreadable (the poll never
+    breaks)."""
+    if not re.fullmatch(r"[A-Za-z0-9._-]{1,128}", str(project or "")):
+        return []
+    import feedback_agent as fa
+    now = _time.time()
+    lines = []
+    for base in ("agent_runs", "feedback_runs"):
+        d = paths.data_root() / base / project
+        try:
+            runs = sorted((p for p in d.iterdir() if p.is_dir()),
+                          key=lambda p: p.stat().st_mtime, reverse=True)
+        except Exception:
+            continue
+        for r in runs[:max_agents]:
+            t = r / "transcript.jsonl"
+            try:
+                if now - t.stat().st_mtime > 900:
+                    continue  # runs mtime-sorted desc: siblings are older still, but the OTHER
+            except Exception:  # base dir may hold a fresher one — so continue, don't break
+                continue
+            tail = fa.tail_transcript(t, per_agent)
+            lines += [f"[{r.name[:20]}] {ln}" for ln in tail]
+            if len(lines) >= max_agents * per_agent:
+                return lines[:max_agents * per_agent]
+    return lines
+
+
+def _digest_log_tail(n=40, max_bytes=8192):
+    """Last `n` non-empty lines of data_root/.digest.log — the digest child's stdout/stderr
+    (start_digest points it there). This is the run's PROCESS log (kimi analysis, folds, board
+    run), the other half of the report's log panel next to the per-agent transcript tails.
+    Tail-read only; [] on anything unreadable."""
+    try:
+        p = paths.data_root() / ".digest.log"
+        with open(p, "rb") as f:
+            f.seek(0, 2)
+            size = f.tell()
+            f.seek(max(0, size - max_bytes))
+            lines = f.read().decode("utf-8", "replace").splitlines()
+        if size > max_bytes and lines:
+            lines = lines[1:]  # first line is almost surely cut mid-way by the seek
+        return [ln for ln in lines if ln.strip()][-n:]
+    except Exception:
+        return []
+
+
 def _digest_status():
     try:
         st = json.loads((paths.data_root() / ".digest_status.json").read_text(encoding="utf-8"))
@@ -490,6 +541,15 @@ def _digest_status():
     # can start a fresh run instead of wedging on the stale "running" forever.
     if st.get("state") == "running" and not viz.digest_alive(st.get("pid")):
         return {"state": "error", "error": "digest process died", "started": st.get("started")}
+    if st.get("state") == "running":
+        act = _digest_activity(st.get("project") or "")
+        if act:
+            st["activity"] = act  # enrich-on-read; never persisted into .digest_status.json
+    # the process-log tail rides along in EVERY state (running: live stream; done/idle: the 📜
+    # panel's one-shot fetch shows what the last run did). Stripped for non-owners in do_GET.
+    log = _digest_log_tail()
+    if log:
+        st["log"] = log
     return st
 
 

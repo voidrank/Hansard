@@ -144,11 +144,23 @@ def board_status(board):
     except Exception:
         pass
     running = st.get("state") == "running" and _sched_alive(st.get("pid"))
+
+    def _row(t):
+        row = {"id": t.get("id"), "title": t.get("title"), "state": t.get("state"),
+               "kind": (t.get("outcome") or {}).get("kind")}
+        # live log tail for agents mid-run — rides the existing /task/status route (no new
+        # endpoint/worker change), so the report can show WHAT the agent is doing, not just ⏳
+        if t.get("state") == "running" and SAFE_ID.match(str(t.get("id") or "")):
+            act = fa.tail_transcript(paths.data_root() / "agent_runs" / board / t["id"]
+                                     / "transcript.jsonl")
+            if act:
+                row["activity"] = act
+        return row
+
     return {"state": "running" if running else "idle", "board": board,
             "total": len(tasks), "done": counts.get("done", 0) + counts.get("error", 0),
             "counts": counts, "pid": st.get("pid") if running else None,
-            "tasks": [{"id": t.get("id"), "title": t.get("title"), "state": t.get("state"),
-                       "kind": (t.get("outcome") or {}).get("kind")} for t in tasks]}
+            "tasks": [_row(t) for t in tasks]}
 
 
 def _sched_alive(pid):

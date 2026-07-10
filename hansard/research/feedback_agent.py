@@ -198,6 +198,48 @@ def _parse_result(transcript_path):
         return None
 
 
+def tail_transcript(transcript_path, n=6, max_bytes=200_000):
+    """Last `n` human-readable activity lines from a live stream-json transcript — what the agent
+    is DOING right now (tool calls + latest prose snippet), for the live log the report's status
+    polls carry (digest/status + task/status ride the existing worker routes, so this needs no new
+    endpoint). Reads only the file tail so a long transcript never slows a 5s poll. [] on anything
+    unreadable — the poll must never break because a transcript is mid-write."""
+    out = []
+    try:
+        with open(transcript_path, "rb") as f:
+            f.seek(0, 2)
+            size = f.tell()
+            f.seek(max(0, size - max_bytes))
+            chunk = f.read().decode("utf-8", "replace")
+    except Exception:
+        return []
+    for line in chunk.splitlines():
+        line = line.strip()
+        if not line.startswith("{"):
+            continue  # a mid-line seek start / partial trailing write — skip, never raise
+        try:
+            ev = json.loads(line)
+        except Exception:
+            continue
+        if ev.get("type") != "assistant":
+            continue
+        for c in ((ev.get("message") or {}).get("content") or []):
+            if not isinstance(c, dict):
+                continue
+            if c.get("type") == "tool_use":
+                inp = c.get("input") or {}
+                arg = str(inp.get("file_path") or inp.get("pattern") or inp.get("path")
+                          or inp.get("command") or "")
+                if len(arg) > 80:
+                    arg = "…" + arg[-79:]
+                out.append(("🔧 " + str(c.get("name") or "?") + " " + arg).strip())
+            elif c.get("type") == "text":
+                t = " ".join(str(c.get("text") or "").split())
+                if t:
+                    out.append("💬 " + (t[:110] + ("…" if len(t) > 110 else "")))
+    return out[-n:]
+
+
 def _run_one(project, item, sub_dirs):
     """Spawn one read-only agent for `item`; return (item, outcome_dict_or_None, record_dir)."""
     key = item.get("key") or ""

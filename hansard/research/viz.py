@@ -2121,6 +2121,119 @@ def agents_section_html(name):
             f"<div class='ag-board'>{board}</div></div>")
 
 
+# --- 📋 TASKS: the kimi-drafted work queue -------------------------------------------------------
+# The other half of the digest pipeline (see feedback._queue_task): kimi analyzes the operator's
+# notes and drafts tickets; a read-only claude agent executes each on the agent board; kimi then
+# rewrites the outcome into the operator's language (task['plain']). This tab is the READABLE
+# surface of that queue — the plain summary on top, the agent's technical outcome folded
+# (report-surface rule: plain words, evidence folded). Cards reuse the .ag-* card styles.
+TASKS_CSS = """
+.tk-wrap{margin:6px 0}
+.tk-status{font-size:13px;color:#334155;margin:4px 2px 10px}
+.tk-src{font-size:12.5px;color:#64748b;margin-top:4px}
+.tk-plain{font-size:14px;color:#0f172a;margin-top:7px;line-height:1.6}
+.tk-wait{font-size:12.5px;color:#94a3b8;margin-top:5px}
+.tk-tech{margin-top:7px}
+.tk-tech summary{font-size:12px;color:#64748b;cursor:pointer}
+"""
+
+TASKS_JS = r"""
+(function(){
+  var wrap=document.querySelector('.tk-wrap'); if(!wrap) return;
+  var proj=wrap.getAttribute('data-project')||'';
+  var stat=wrap.querySelector('.tk-status');
+  if(!wrap.querySelector('.ag-running,.ag-queued')) return;  // nothing in flight -> nothing to poll
+  (function poll(){
+    fetch('task/status?project='+encodeURIComponent(proj),{credentials:'same-origin'})
+      .then(function(r){if(!r.ok)throw new Error('status '+r.status);return r.json()})
+      .then(function(j){
+        (j.tasks||[]).forEach(function(t){
+          var el=wrap.querySelector('.tk-card[data-taskid="'+t.id+'"]'); if(!el)return;
+          el.className='ag-card ag-'+t.state+' tk-card';
+          el.querySelector('.ag-badge').textContent={done:'✅',running:'⏳',error:'✗',queued:'•'}[t.state]||'•';
+          el.querySelector('.ag-state').textContent=t.state;
+        });
+        var c=j.counts||{}, pending=(c.running||0)+(c.queued||0);
+        if(j.state==='running'||pending>0){
+          stat.textContent='🤖 '+pending+' task(s) in flight — the plain summaries land on reload.';
+          setTimeout(poll,5000);
+        }else{
+          stat.innerHTML='✅ all tasks done. <a href="javascript:location.reload()">reload</a> to read the summaries.';
+        }
+      }).catch(function(){ /* static page without a backend -> stop quietly */ });
+  })();
+})();
+"""
+
+
+def tasks_section_html(name):
+    """📋 Tasks tab — the kimi-drafted work queue. Each card is a ticket kimi distilled from an
+    operator note (created_by=kimi rows on the agent board): a read-only claude agent executes
+    it, then kimi rewrites the outcome into the operator's language (task['plain']). The plain
+    summary IS the surface; the agent's raw findings fold behind <details>. Empty when kimi has
+    drafted nothing yet — the tab then drops out of the nav entirely."""
+    try:
+        import agent_board as ab
+        tasks = [t for t in ab.load_tasks(name) if t.get("created_by") == "kimi"]
+    except Exception:
+        tasks = []
+    if not tasks:
+        return ""
+    live_first = {"running": 0, "queued": 1, "error": 2, "done": 3}
+    tasks = sorted(reversed(tasks),  # newest first, in-flight ones float to the top
+                   key=lambda t: live_first.get(t.get("state", "queued"), 4))
+    counts = {}
+    cards = []
+    for t in tasks:
+        stt = t.get("state", "queued")
+        counts[stt] = counts.get(stt, 0) + 1
+        badge = {"done": "✅", "running": "⏳", "error": "✗", "queued": "•"}.get(stt, "•")
+        oc = t.get("outcome") or {}
+        body = []
+        if t.get("source"):
+            body.append(f"<div class='tk-src'>“{_ec(str(t['source']))}”</div>")
+        if stt == "done":
+            plain = str(t.get("plain") or "").strip() or str(oc.get("summary") or "")
+            body.append(f"<div class='tk-plain'>{_ec(plain)}</div>")
+            tech = []
+            if oc.get("summary"):
+                tech.append(f"<div class='ag-sum'>{_ec(str(oc['summary']))}</div>")
+            findings = "".join(f"<li>{_ec(str(f))}</li>" for f in (oc.get("findings") or [])[:8])
+            if findings:
+                tech.append(f"<ul class='ag-find'>{findings}</ul>")
+            if oc.get("proposal"):
+                tech.append(f"<div class='ag-prop'><b>proposal:</b> {_ec(str(oc['proposal']))}</div>")
+            evid = "".join(f"<code>{_e(str(v))}</code> " for v in (oc.get("evidence") or [])[:10])
+            if evid:
+                tech.append(f"<div class='ag-meta'><b>evidence:</b> {evid}</div>")
+            if t.get("run_dir"):
+                tech.append(f"<div class='ag-meta'><b>run dir:</b> <code>{_e(str(t['run_dir']))}</code></div>")
+            if tech:
+                body.append("<details class='tk-tech'><summary>how the agent got there (technical)</summary>"
+                            + "".join(tech) + "</details>")
+        elif stt == "error":
+            body.append(f"<div class='ag-err'>{_e(str(t.get('error') or 'agent failed'))}</div>")
+        else:
+            body.append("<div class='tk-wait'>a read-only claude agent picks this up — "
+                        "the plain summary lands here when it finishes.</div>")
+        cards.append(f"<div class='ag-card ag-{stt} tk-card' data-taskid='{_e(t.get('id', ''))}'>"
+                     f"<div class='ag-head'><span class='ag-badge'>{badge}</span>"
+                     f"<span class='ag-title'>{_e(t.get('title', ''))}</span>"
+                     f"<span class='ag-state'>{_e(stt)}</span></div>"
+                     + "".join(body) + "</div>")
+    n = len(tasks)
+    working = counts.get("running", 0) + counts.get("queued", 0)
+    count_bits = [f"{n} task{'s' if n != 1 else ''}"] + [
+        f"{counts[s]} {s}" for s in ("running", "queued", "done", "error") if counts.get(s)]
+    return ("<h2 class='sec'>📋 Tasks — what your notes turned into</h2>"
+            f"<div class='tk-wrap' data-project='{_e(name)}'>"
+            f"<div class='ag-bar'><span class='ag-count'>{_e(' · '.join(count_bits))}</span></div>"
+            "<div class='tk-status'>"
+            + (f"🤖 {working} task(s) in flight — states update live." if working else "")
+            + "</div>"
+            f"<div class='tk-board'>{''.join(cards)}</div></div>")
+
+
 SKILLS_REWRITE_SYS = (
     "Rewrite each slash-command description so a human enjoys reading it: ONE line per command, "
     "the way a colleague would tell you what it's FOR and when they reach for it — warm, concrete, "
@@ -2471,7 +2584,7 @@ def render_html(name, goal, bar, pl, nodes, knowledge, kinds, id2phase, phase_or
 
     H = ['<!doctype html><html lang="en"><head><meta charset="utf-8">',
          '<meta name="viewport" content="width=device-width,initial-scale=1">',
-         f"<title>{_e(name)} — research tree</title><style>{CSS}{CHAT_CSS}{QUIZ_CSS}{ANNOT_CSS}{EDIT_CSS}{AGENTS_CSS}</style>"
+         f"<title>{_e(name)} — research tree</title><style>{CSS}{CHAT_CSS}{QUIZ_CSS}{ANNOT_CSS}{EDIT_CSS}{AGENTS_CSS}{TASKS_CSS}</style>"
          # JS-STRIPPED viewers (phone inline preview, some sandboxes) never run NAV_JS, and the
          # tabbed sections default to display:none — without this fallback the whole report body
          # renders BLANK there. No JS -> hide the dead tab bar, lay every section out in flow
@@ -2657,8 +2770,10 @@ def render_html(name, goal, bar, pl, nodes, knowledge, kinds, id2phase, phase_or
     # 🔧 To-process actions, unified). 🔀 Data & pipeline and 🧭 Decisions (spine + search tree)
     # are un-wired from the report; their builders (data_section_html / pipeline_html /
     # spine_groups / tree_svg) still render in the slides deck.
+    # 0.5.2 adds 📋 Tasks (the kimi-drafted work queue; only exists once kimi drafted something).
     secs = [(i, l, h) for i, l, h in (
         ("sec-timeline", "📅 Timeline", "".join(tl_sec)),
+        ("sec-tasks", "📋 Tasks", tasks_section_html(name)),
         ("sec-agents", "🎛 Agents", agents_section_html(name)),
         ("sec-skills", "🧠 Skills", skills_section_html()),
         ("sec-goals", "🎯 Goals", "".join(goals_sec)),
@@ -2689,6 +2804,7 @@ def render_html(name, goal, bar, pl, nodes, knowledge, kinds, id2phase, phase_or
     H.append("<script>" + TOPROCESS_JS + "</script>")  # 🖍 Requests tab adopt/dismiss buttons
     H.append("<script>" + EDIT_JS + "</script>")   # last: arms the owner-only inline editor
     H.append("<script>" + AGENTS_JS + "</script>")  # 🎛 Agents board: composer + live status poll
+    H.append("<script>" + TASKS_JS + "</script>")   # 📋 Tasks: live state poll on the kimi queue
     H.append("</body></html>")
     return "\n".join(H)
 
@@ -3627,6 +3743,12 @@ def _digest_feedback_run(default_name=None):
                 push.delete_feedback(key)
             except Exception:
                 pass
+        try:  # kimi drafted tickets this run -> execute them now: claude agents run each queued
+            import agent_board as _ab  # task, kimi writes the plain summaries, run_board re-renders
+            if any(t.get("state") == "queued" for t in _ab.load_tasks(proj)):
+                _ab.run_board(proj)
+        except Exception as e:
+            print(f"[digest] {proj}: board run failed: {e}", file=sys.stderr)
         line = (f"{proj}: {len(consumed)}/{len(blobs)} blob(s) -> +{counts[0]} glossary, "
                 f"+{counts[1]} FAQ, +{counts[3]} note(s)" + (f"; {fsum}" if fsum else ""))
         print(line + f"\n  -> {htmlpath}")

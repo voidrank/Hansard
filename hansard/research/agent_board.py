@@ -165,16 +165,18 @@ def _sched_alive(pid):
 
 
 # ---- task creation -------------------------------------------------------------------------------
-def create_task(board, title, prompt, policy="read_only", created_by="operator"):
+def create_task(board, title, prompt, policy="read_only", created_by="operator", source=""):
     """Mint a server-side id and write a queued task row. Returns the task dict, or None on a bad
-    board / unknown policy (never trust caller-supplied ids or policy VALUES — only a policy NAME)."""
+    board / unknown policy (never trust caller-supplied ids or policy VALUES — only a policy NAME).
+    `source` carries the operator note a kimi-drafted task came from (the 📋 Tasks tab shows it)."""
     board = _safe_board(board)
     if not board or policy not in POLICIES:
         return None
     tid = "t-" + secrets.token_hex(6)
     task = {"id": tid, "board": board, "title": (str(title or "").strip()[:200] or "(untitled)"),
             "prompt": str(prompt or "").strip()[:8000], "type": "investigator", "policy": policy,
-            "state": "queued", "created_by": created_by, "created_ts": time.time(),
+            "state": "queued", "created_by": created_by, "source": str(source or "").strip()[:300],
+            "created_ts": time.time(),
             "run_dir": f"agent_runs/{board}/{tid}/", "outcome": None, "pid": None, "error": None}
     _merge_task(board, task)
     return task
@@ -207,6 +209,34 @@ RETURN — your FINAL message must be ONLY this JSON (no prose, no code fence), 
   "evidence": ["file:line", "..."],
   "confidence": "high|medium|low"
 }}"""
+
+
+PLAIN_SYS = (
+    "You summarize ONE finished investigation for the project's operator. Input JSON: the task "
+    "(title + instruction + the operator note it came from) and the agent's structured outcome. "
+    "Write 2-4 SHORT sentences in the SAME LANGUAGE as the operator note / task title: what was "
+    "checked, what was found, and what should happen next or be decided. Plain words a "
+    "non-engineer reads in one pass — NO file:line, no code identifiers, no JSON, no headings. "
+    "Output the sentences only.")
+
+
+def _plain_summary(task, outcome):
+    """The report ladder (default kimi) rewrites the claude agent's technical outcome into a few
+    plain sentences in the operator's language — the 📋 Tasks tab surface (claude never writes
+    reader-facing prose). '' on any failure or when the LLM is off (fail-open: the technical
+    outcome still renders, folded)."""
+    prov = (os.environ.get("HANSARD_REPORT_LLM")
+            or os.environ.get("TRAINLINT_REPORT_LLM", "kimi")).strip().lower()
+    if prov in ("", "none", "off", "0", "false", "template"):
+        return ""
+    try:
+        import viz
+        user = json.dumps({"task": {"title": task.get("title"), "prompt": task.get("prompt"),
+                                    "operator_note": task.get("source") or ""},
+                           "outcome": outcome}, ensure_ascii=False)
+        return viz._llm(prov, PLAIN_SYS, user).strip()[:1200]
+    except Exception:
+        return ""
 
 
 def run_task(task):
@@ -247,7 +277,8 @@ def run_task(task):
     outcome = fa._parse_result(tpath)
     if outcome is not None:
         (rec / "outcome.json").write_text(json.dumps(outcome, ensure_ascii=False, indent=2), encoding="utf-8")
-        task.update(state="done", outcome=outcome, pid=None, error=None)
+        task.update(state="done", outcome=outcome, pid=None, error=None,
+                    plain=_plain_summary(task, outcome))
     else:
         task.update(state="error", error="agent returned no parseable structured result", pid=None)
     _merge_task(board, task)

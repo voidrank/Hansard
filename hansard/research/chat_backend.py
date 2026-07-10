@@ -509,12 +509,13 @@ def start_digest(project):
         lb = str(Path.home() / ".local" / "bin")
         if lb not in env.get("PATH", "").split(":"):
             env["PATH"] = lb + ":" + env.get("PATH", "/usr/local/bin:/usr/bin:/bin")
-        # Two digest engines. AGENTIC (default): one read-only Claude Code agent per feedback item
-        # (feedback_agent.py) — investigates the real code, proposes; a deterministic serial applier
-        # lands the safe part. Needs a specific project. CLASSIC: the cheap one-shot classify (default kimi)
-        # (viz.py --digest), also the fallback when no project is named. TRAINLINT_DIGEST_MODE=classic
-        # forces the cheap path.
-        mode = env.get("HANSARD_DIGEST_MODE") or env.get("TRAINLINT_DIGEST_MODE", "agentic").strip().lower()
+        # Two digest engines. KIMI PIPELINE (default, viz.py --digest): kimi batch-analyzes every
+        # note (classify + draft tickets for anything that needs the real code), read-only claude
+        # agents execute the tickets on the agent board, kimi rewrites each outcome into the
+        # operator's language (📋 Tasks tab). AGENTIC (legacy, TRAINLINT_DIGEST_MODE=agentic):
+        # one claude agent per feedback item (feedback_agent.py) which also writes the
+        # reader-facing prose itself — kept as an env opt-out only (claude shouldn't render).
+        mode = env.get("HANSARD_DIGEST_MODE") or env.get("TRAINLINT_DIGEST_MODE", "kimi").strip().lower()
         if mode == "agentic" and project:
             args = [sys.executable, str(ROOT / "feedback_agent.py"), project]
         else:

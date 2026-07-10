@@ -13,7 +13,10 @@ This module classifies each NEW item into WHY it was left, so the feedback actua
   readability — the report itself reads badly -> the concrete rendering/wording change
 
 Each classified line lands in feedback.<name>.jsonl:
-  {src: comment|chat, key, quote, note, kind, insight, action, ts, digested}
+  {src: comment|chat, key, quote, note, kind, insight, action, ts, digested, task_id?}
+task_id links items that need the real code investigated: kimi drafts the ticket alongside the
+classification, it queues on the agent board (created_by=kimi), a read-only claude agent runs it,
+and kimi's plain rewrite of the outcome surfaces on the report's 📋 Tasks tab.
 Dedupe by (src, key): re-digesting is a no-op. The LLM ladder is shared with viz
 (TRAINLINT_REPORT_LLM, default kimi: kimi|codex|gemini|claude; none/off -> items recorded as 'unclassified'
 so capture never blocks on a model). Run directly: python3 feedback.py <project> [digest]
@@ -37,8 +40,16 @@ CLASSIFY_SYS = (
     "- readability: the report itself reads badly (structure, ordering, density, wording). "
     "insight = the readability failure; action = the concrete report change.\n"
     "Judge from the item text; when a note both disputes and asks, prefer correction. "
+    "ALSO: when settling an item requires INVESTIGATING THE REAL PROJECT CODE (a disputed claim "
+    "to verify, a behaviour to trace, a concrete change to scope), add \"task\": {\"title\": \"…\", "
+    "\"prompt\": \"…\"} — a ticket a read-only code agent will pick up. title = ONE plain line in "
+    "the OPERATOR'S OWN LANGUAGE (the language of their note); prompt = the agent's full "
+    "instruction: what to locate, what to verify, what to propose (be precise; any language). "
+    "Most confusion/readability items need NO task — omit the field; a correction that disputes "
+    "a factual claim about the code almost always needs one. "
     "Output STRICT JSON: an array like [{\"i\": 1, \"kind\": \"confusion\", \"insight\": \"…\", "
-    "\"action\": \"…\"}] covering every item exactly once. No prose outside the JSON.")
+    "\"action\": \"…\", \"task\": {\"title\": \"…\", \"prompt\": \"…\"}}] covering every item "
+    "exactly once (task only where it is needed). No prose outside the JSON.")
 
 
 def _feedback_path(name):
@@ -114,6 +125,10 @@ def _classify(items):
             if idx is not None:
                 out[idx] = {"kind": row["kind"], "insight": str(row.get("insight", "")).strip(),
                             "action": str(row.get("action", "")).strip()}
+                t = row.get("task")  # kimi's optional ticket draft for the agent board
+                if isinstance(t, dict) and str(t.get("prompt") or "").strip():
+                    out[idx]["task"] = {"title": str(t.get("title") or "").strip(),
+                                        "prompt": str(t.get("prompt") or "").strip()}
         return out
     except Exception:
         return {}
@@ -125,6 +140,24 @@ def _as_idx(v):
         return int(v) - 1
     except (TypeError, ValueError):
         return None
+
+
+def _queue_task(name, rec, verdict):
+    """kimi drafted a ticket for this item -> queue it on the agent board (created_by=kimi),
+    linked back via task_id so re-digesting never queues it twice. A read-only claude agent
+    executes it; agent_board folds the outcome back into kimi plain language (task['plain']).
+    Fail-open: a board hiccup must never lose the classification itself."""
+    t = (verdict or {}).get("task")
+    if not t or rec.get("task_id"):
+        return
+    try:
+        import agent_board as ab
+        bt = ab.create_task(name, t.get("title") or (rec.get("note") or "")[:60], t["prompt"],
+                            created_by="kimi", source=rec.get("note") or "")
+        if bt:
+            rec["task_id"] = bt["id"]
+    except Exception as e:
+        print(f"[feedback] task not queued: {e}", file=sys.stderr)
 
 
 def digest(name):
@@ -149,12 +182,14 @@ def digest(name):
         v = verdicts.get(i, {})
         r.update({"kind": v.get("kind", "unclassified"), "insight": v.get("insight", ""),
                   "action": v.get("action", ""), "digested": now})
+        _queue_task(name, r, v)
         touched.append(r)
     for j, r in enumerate(retry):
         v = verdicts.get(len(recs) + j)
         if v:  # only rewrite a retry row when the model actually classified it
             r.update({"kind": v["kind"], "insight": v["insight"], "action": v["action"],
                       "digested": now})
+            _queue_task(name, r, v)
             updated[(r.get("src"), r.get("key"))] = r
             touched.append(r)
     if not recs and not updated:

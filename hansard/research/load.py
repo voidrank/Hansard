@@ -206,7 +206,9 @@ def brief(name):
             bits.append(f"skills on file: {titles}{' …' if len(sk) > 6 else ''} — read "
                         f"{paths.resolve(f'skills.{name}.jsonl')} before reinventing a procedure")
         bits.append("keep the stores growing as you work: new reusable procedure → skills, "
-                    "new fact/finding → knowledge, new guardable mistake → project facts (lint)")
+                    "new fact/finding → knowledge, new guardable mistake → project facts (lint); "
+                    "human-facing prose in an entry is drafted via the kimi CLI (`kimi --print`), "
+                    "you keep the judgment/structure")
         if pending:
             bits.append(f"⟳ {len(pending)} source file(s) new/changed since load — "
                         f"`/hansard:load` refreshes just those")

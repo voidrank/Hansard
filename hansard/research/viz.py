@@ -524,6 +524,9 @@ h2.sec{font-size:11.5px;letter-spacing:.12em;text-transform:uppercase;color:var(
 .sk-row code{font-family:var(--mono);font-size:12.5px;font-weight:600;color:var(--ink);
   background:var(--paper);border-radius:6px;padding:1px 7px}
 .sk-desc{font-size:12.5px;color:var(--ink3);margin-top:4px}
+.sk-src{margin-top:3px;font-size:11.5px;color:var(--ink3)}
+.sk-src summary{cursor:pointer;color:var(--ink3);opacity:.55;font-size:11px}
+.sk-src[open] summary{opacity:.8}
 .go-row{display:flex;gap:9px;align-items:baseline;padding:9px 10px;border-bottom:1px solid var(--line2)}
 .go-row:last-child{border-bottom:0}
 .phase{font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--mut);margin:12px 8px 4px;font-weight:700}
@@ -647,6 +650,12 @@ abbr.gl-term{text-decoration:underline dotted var(--mut);text-underline-offset:2
 .tp-adopt{background:var(--ok,#16a34a);color:#fff}
 .tp-dismiss{background:var(--paper);color:var(--ink2);border:1px solid var(--line2)!important}
 .tp-msg{font-size:11.5px;color:var(--mut)}
+/* readable surface: the operator's words lead, the plain answer follows, evidence folds */
+.tp-note{font-size:14px;font-weight:650;color:var(--ink);line-height:1.55}
+.tp-ans{font-size:13px;color:var(--ink2);line-height:1.55;margin-top:6px}
+.tp-will{font-size:12.5px;color:var(--ink2);margin-top:6px;line-height:1.5}
+.tp-will ul{margin:3px 0 0 18px;padding:0}.tp-will li{margin:2px 0}
+.tp-quote{font-size:11.5px;color:var(--mut);margin-top:5px;line-height:1.45}
 @media print{.tp-actions{display:none}}
 """
 
@@ -2112,11 +2121,54 @@ def agents_section_html(name):
             f"<div class='ag-board'>{board}</div></div>")
 
 
+SKILLS_REWRITE_SYS = (
+    "Rewrite each slash-command description so a human enjoys reading it: ONE line per command, "
+    "the way a colleague would tell you what it's FOR and when they reach for it — warm, concrete, "
+    "zero ceremony, no marketing. Keep every factual claim from the source and invent nothing; "
+    "keep the source's language. Input is a JSON object {command: description}; output ONLY the "
+    "same-shaped JSON object with the rewritten lines — no prose, no code fence.")
+
+
+def _skills_rewrite(items):
+    """One batched LLM pass (the report ladder, default kimi) that redrafts the command
+    descriptions for the human surface — the frontmatter stays the machine spec, folded below
+    [report-surface-plain-evidence-folded]. Cached by content hash so the tab doesn't wobble
+    between renders; {} (raw descriptions shown) when the LLM is off or fails."""
+    prov = (os.environ.get("HANSARD_REPORT_LLM")
+            or os.environ.get("TRAINLINT_REPORT_LLM", "kimi")).strip().lower()
+    if prov in ("none", "off", "0", "false", "template"):
+        return {}
+    key = hashlib.sha256(json.dumps(items, sort_keys=True, ensure_ascii=False).encode()).hexdigest()[:16]
+    cachep = paths.data_root() / "viz" / ".skills_rewrite.json"
+    try:
+        cached = json.loads(cachep.read_text(encoding="utf-8"))
+        if cached.get("key") == key:
+            return cached.get("text", {})
+    except Exception:
+        pass
+    try:
+        raw = _llm(prov, SKILLS_REWRITE_SYS, json.dumps(items, ensure_ascii=False)).strip()
+        raw = raw[raw.index("{"):raw.rindex("}") + 1]  # tolerate a fenced / prefixed reply
+        text = {k: v.strip() for k, v in json.loads(raw).items()
+                if k in items and isinstance(v, str) and v.strip()}
+    except Exception:
+        return {}
+    if text:
+        try:
+            cachep.parent.mkdir(parents=True, exist_ok=True)
+            cachep.write_text(json.dumps({"key": key, "text": text}, ensure_ascii=False, indent=1),
+                              encoding="utf-8")
+        except Exception:
+            pass
+    return text
+
+
 def skills_section_html():
     """🧠 Skills — the plugin's slash commands, auto-scanned from commands/*.md (zero
     maintenance: a new command file appears here on the next render). Description +
     argument hint come from the YAML frontmatter; a file without frontmatter (use.md)
-    falls back to its first non-empty body line. Never raises."""
+    falls back to its first non-empty body line. The surface line is the LLM redraft
+    (_skills_rewrite); the raw description folds beneath it. Never raises."""
     try:
         cmd_dir = ROOT.parent / "commands"
         if not cmd_dir.is_dir():
@@ -2126,7 +2178,7 @@ def skills_section_html():
                                 .read_text(encoding="utf-8")).get("name") or "hansard"
         except Exception:
             prefix = "hansard"
-        rows = []
+        items = []
         for f in sorted(cmd_dir.glob("*.md")):
             desc, hint = "", ""
             lines = f.read_text(encoding="utf-8").splitlines()
@@ -2145,9 +2197,17 @@ def skills_section_html():
                 lines = lines[body_at:]
             if not desc:  # no frontmatter (or none had a description) -> first body line
                 desc = next((ln.strip() for ln in lines if ln.strip()), "")
+            items.append((f.stem, hint, desc))
+        human = _skills_rewrite({stem: desc for stem, _h, desc in items})
+        rows = []
+        for stem, hint, desc in items:
             hint_html = f" <span class='chip'>{_e(hint)}</span>" if hint else ""
-            rows.append(f"<div class='sk-row'><code>/{_e(prefix)}:{_e(f.stem)}</code>{hint_html}"
-                        f"<div class='sk-desc'>{_ec(desc)}</div></div>")
+            h = human.get(stem)
+            body = (f"<div class='sk-desc'>{_ec(h)}</div>"
+                    f"<details class='sk-src'><summary>spec</summary>{_ec(desc)}</details>"
+                    if h else f"<div class='sk-desc'>{_ec(desc)}</div>")
+            rows.append(f"<div class='sk-row'><code>/{_e(prefix)}:{_e(stem)}</code>{hint_html}"
+                        f"{body}</div>")
         if not rows:
             return ""
         return ("<h2 class='sec'>🧠 Skills — the plugin's slash commands</h2>"
@@ -2156,12 +2216,44 @@ def skills_section_html():
         return ""  # a listing, never worth taking the report down
 
 
+def _cjk(s):
+    """True when the text is (mostly) Chinese — per-card language switch for deterministic chrome."""
+    return any("一" <= c <= "鿿" for c in str(s))
+
+
+def _pe_lines(pe, zh):
+    """One plain sentence per structured proposed_edit — what ✓ Adopt will ACTUALLY do, rendered
+    deterministically from the ops themselves (never just a count). Language follows the note."""
+    out = []
+    for e in pe:
+        if not isinstance(e, dict):
+            continue
+        op = str(e.get("op") or "")
+        if op == "add_glossary":
+            t = _trunc(str(e.get("term") or ""), 40)
+            out.append(f"新增词条「{t}」" if zh else f"add glossary term “{t}”")
+        elif op == "delete":
+            v = _trunc(str(e.get("match_value") or ""), 48)
+            k = str(e.get("kind") or "?")
+            out.append(f"删除一条 {k}（“{v}”）" if zh else f"delete one {k} row (“{v}”)")
+        elif op == "set":
+            k, f = str(e.get("kind") or "?"), str(e.get("field") or "?")
+            v = _trunc(str(e.get("value") or ""), 90)
+            out.append(f"把 {k} 的 {f} 改为：“{v}”" if zh else f"rewrite the {k}'s {f} to: “{v}”")
+        elif op:
+            out.append(op)
+    return out
+
+
 def requests_section_html(name):
     """🖍 Requests — every note the reader left (feedback.<name>.jsonl), the whole loop in one
     tab: PENDING requests first as actionable cards (✓ Adopt applies the agent's proposed_edits
     via the owner-only /resolve, ✗ Dismiss clears it — TOPROCESS_JS wires the buttons), then the
-    RESOLVED history below, each with the agent's verdict/worklog. Supersedes the old
-    outside-the-tabs feedback box + the 🔧 To-process tab. Never raises."""
+    RESOLVED history below. READABILITY CONTRACT (operator 2026-07-09 '根本就不可读'): the card
+    SURFACE is plain words in the operator's language — their own note first, the agent's one-line
+    answer (`action`), and what Adopt will concretely change (rendered from proposed_edits, never
+    a bare count). ALL provenance — quote, file:line diagnosis, worklog — folds into <details>.
+    Never raises."""
     try:
         fb = [e for e in tree._load_jsonl(paths.resolve(f"feedback.{name}.jsonl"))
               if isinstance(e, dict)]
@@ -2175,37 +2267,56 @@ def requests_section_html(name):
         pend = [e for e in fb if not e.get("resolved")]
         head = " · ".join(f"{v} {k}" for k, v in sorted(kinds.items()))
         out = [f"<h2 class='sec'>🖍 Requests — {_e(head)}</h2>"]
+        zh_tab = any(_cjk(e.get("note")) for e in pend)
         if pend:  # ---- actionable inbox: adopt/dismiss lives HERE, in the tab ----
-            out.append(f"<p class='lb-intro'>{len(pend)} request(s) awaiting your call — the "
-                       "agentic digest investigated and PROPOSED, but the change is yours to "
-                       "make. Adopt applies the agent's exact proposal; dismiss clears it.</p>")
+            out.append("<p class='lb-intro'>"
+                       + (f"{len(pend)} 条请求等你裁决——agent 调查后给出了提案，但改不改由你定："
+                          "✓采纳 = 应用它列出的改动，✗忽略 = 清掉。" if zh_tab else
+                          f"{len(pend)} request(s) awaiting your call — the agent investigated "
+                          "and proposed; the change is yours to make. Adopt applies the listed "
+                          "edits; dismiss clears it.")
+                       + "</p>")
         for e in pend:
             k = str(e.get("kind") or "unclassified")
             key = str(e.get("key") or "")
+            note = str(e.get("note") or "")
+            zh = _cjk(note)
             pe = e.get("proposed_edits") or []
             verdict = str(e.get("claim_verdict") or "")
             vline = ""
             if k == "correction" and verdict == "operator_right":
-                vline = "🤖 verified you were RIGHT — a fix is proposed"
+                vline = "🤖 核实过：你是对的——修复已备好" if zh else "🤖 verified you were RIGHT — a fix is ready"
             elif k == "unclassified":
-                vline = "⚠ the agent could not produce a verdict — re-run the digest to retry"
+                vline = ("⚠ agent 没能给出结论——重跑一次 digest" if zh else
+                         "⚠ the agent could not produce a verdict — re-run the digest to retry")
+            ans = str(e.get("action") or "")  # the agent's one-line answer / change_summary
+            will = _pe_lines(pe, zh)
             prop = str(e.get("proposal") or "")
-            adopt_btn = (f"<button class='tp-adopt' data-key=\"{_eattr_val(key)}\">✓ Adopt</button>"
-                         if pe else "")
+            quote = str(e.get("quote") or "")
+            insight = str(e.get("insight") or "")
+            fold = ""  # provenance drawer: everything grounded lives here, never on the surface
+            if quote or insight or prop:
+                fold = ("<details class='fb-wl'><summary>"
+                        + ("🔎 依据（引文 · 诊断 · worklog）" if zh else "🔎 evidence (quote · diagnosis · worklog)")
+                        + "</summary>"
+                        + (f"<div class='tp-quote'>“{_e(_trunc(quote, 400))}”</div>" if quote else "")
+                        + (f"<div class='lb-diag'>{_ec(insight)}</div>" if insight else "")
+                        + (f"<pre>{_e(_trunc(prop, 1800))}</pre>" if prop else "")
+                        + "</details>")
+            adopt_btn = (f"<button class='tp-adopt' data-key=\"{_eattr_val(key)}\">"
+                         + ("✓ 采纳" if zh else "✓ Adopt") + "</button>" if pe else "")
             out.append(
                 "<div class='tp-card' data-key=\"" + _eattr_val(key) + "\">"
-                f"<div class='lb-head'><span class='fb-kind' style='background:{col.get(k, '#7d7566')}'>{_e(k)}</span>"
-                + (f"<span class='tp-nedits'>{len(pe)} proposed edit(s)</span>" if pe else "")
-                + "</div>"
-                f"<div class='lb-req'>“{_e(_trunc(str(e.get('quote') or ''), 120))}” — "
-                f"<b>{_ec(str(e.get('note') or ''))}</b></div>"
-                + (f"<div class='lb-diag'>{_ec(_trunc(str(e.get('insight') or ''), 400))}</div>" if e.get("insight") else "")
+                f"<div class='lb-head'><span class='fb-kind' style='background:{col.get(k, '#7d7566')}'>{_e(k)}</span></div>"
+                f"<div class='tp-note'>{_ec(note)}</div>"
+                + (f"<div class='tp-ans'>{_ec(ans)}</div>" if ans else "")
                 + (f"<div class='lb-vl'>{_e(vline)}</div>" if vline else "")
-                + (f"<details class='fb-wl'><summary>🤖 proposal / worklog</summary>"
-                   f"<pre>{_e(_trunc(prop, 1800))}</pre></details>" if prop else "")
+                + (("<div class='tp-will'>" + ("✓ 采纳后会：" if zh else "✓ Adopt will:")
+                    + "<ul>" + "".join(f"<li>{_ec(w)}</li>" for w in will) + "</ul></div>") if will else "")
+                + fold
                 + "<div class='tp-actions'>" + adopt_btn
-                + f"<button class='tp-dismiss' data-key=\"{_eattr_val(key)}\">✗ Dismiss</button>"
-                + "<span class='tp-msg'></span></div>"
+                + f"<button class='tp-dismiss' data-key=\"{_eattr_val(key)}\">" + ("✗ 忽略" if zh else "✗ Dismiss")
+                + "</button><span class='tp-msg'></span></div>"
                 + "</div>")
         done = [e for e in fb if e.get("resolved")]
         if done:  # ---- resolved history, below the inbox ----
@@ -2228,8 +2339,9 @@ def requests_section_html(name):
                 out.append(
                     f"<div class='fb-row done'>"
                     f"<span class='fb-kind' style='background:{col.get(k, '#7d7566')}'>{_e(k)}</span>"
-                    f"<div><div class='fb-note'>“{_e(_trunc(str(e.get('quote') or ''), 90))}” — "
-                    f"{_ec(str(e.get('note') or ''))}</div>"
+                    f"<div><div class='fb-note'><b>{_ec(str(e.get('note') or ''))}</b></div>"
+                    + (f"<div class='tp-quote'>“{_e(_trunc(str(e.get('quote') or ''), 90))}”</div>"
+                       if e.get("quote") else "")
                     + (f"<div class='fb-act'>→ {_ec(act)}</div>" if act else "")
                     + extra
                     + "<div class='fb-done'>✓ addressed</div>"
@@ -2694,7 +2806,7 @@ def render_slides(name, goal, bar, pl, nodes, knowledge, kinds, id2phase, phase_
     # substrate — the template used to DUMP 10k-char timeline / decision slides (unreadable). The
     # template arc (beats + timeline + spine) is the fallback when no LLM is set or it fails.
     _prov = os.environ.get("HANSARD_SLIDES_LLM") or os.environ.get("TRAINLINT_SLIDES_LLM",
-                           os.environ.get("HANSARD_REPORT_LLM") or os.environ.get("TRAINLINT_REPORT_LLM", "codex")).strip().lower()
+                           os.environ.get("HANSARD_REPORT_LLM") or os.environ.get("TRAINLINT_REPORT_LLM", "kimi")).strip().lower()
     deck = llm_slides(name, _prov) if _prov else []
     if deck:
         for sl in deck:
@@ -3256,7 +3368,7 @@ def generate(name):
     except Exception:
         pass
     import os
-    _prov = os.environ.get("HANSARD_REPORT_LLM") or os.environ.get("TRAINLINT_REPORT_LLM", "codex").strip().lower()  # default: codex writes the prose
+    _prov = os.environ.get("HANSARD_REPORT_LLM") or os.environ.get("TRAINLINT_REPORT_LLM", "kimi").strip().lower()  # default: kimi writes the prose
     if _prov in ("none", "off", "0", "false", "template"):  # any opt-out spelling -> templated prose
         _prov = ""
     narrative = llm_narrative(name, _prov) if _prov else ""

@@ -15,7 +15,7 @@ This module classifies each NEW item into WHY it was left, so the feedback actua
 Each classified line lands in feedback.<name>.jsonl:
   {src: comment|chat, key, quote, note, kind, insight, action, ts, digested}
 Dedupe by (src, key): re-digesting is a no-op. The LLM ladder is shared with viz
-(TRAINLINT_REPORT_LLM: kimi|codex|gemini|claude; none/off -> items recorded as 'unclassified'
+(TRAINLINT_REPORT_LLM, default kimi: kimi|codex|gemini|claude; none/off -> items recorded as 'unclassified'
 so capture never blocks on a model). Run directly: python3 feedback.py <project> [digest]
 """
 import json
@@ -98,7 +98,7 @@ def _item_text(src, quote, note):
 
 def _classify(items):
     """items -> {index: {kind, insight, action}} via the shared LLM ladder; {} on any failure."""
-    prov = os.environ.get("HANSARD_REPORT_LLM") or os.environ.get("TRAINLINT_REPORT_LLM", "codex").strip().lower()
+    prov = os.environ.get("HANSARD_REPORT_LLM") or os.environ.get("TRAINLINT_REPORT_LLM", "kimi").strip().lower()
     if prov in ("", "none", "off", "0", "false", "template"):
         return {}
     try:
@@ -207,7 +207,7 @@ def apply(name):
     when at least one term was actually added for it; otherwise it stays pending for the agent.
     Corrections and readability need judgment and are never auto-resolved (the compass carries
     them). Returns (items_resolved, terms_added)."""
-    prov = os.environ.get("HANSARD_REPORT_LLM") or os.environ.get("TRAINLINT_REPORT_LLM", "codex").strip().lower()
+    prov = os.environ.get("HANSARD_REPORT_LLM") or os.environ.get("TRAINLINT_REPORT_LLM", "kimi").strip().lower()
     if prov in ("", "none", "off", "0", "false", "template"):
         return (0, 0)
     p = _feedback_path(name)

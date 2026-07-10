@@ -33,7 +33,7 @@ each authenticated request back down that connection.
 **Local (per operator)** — `../research/`
 | file | role |
 |---|---|
-| `viz.py` | renders the report + slide deck HTML into `data_root/viz/<project>.html`. Slides are LLM-authored (`TRAINLINT_SLIDES_LLM`, default `codex`). |
+| `viz.py` | renders the report + slide deck HTML into `data_root/viz/<project>.html`. Slides are LLM-authored (`TRAINLINT_SLIDES_LLM`, default `kimi`). |
 | `chat_backend.py` | loopback HTTP server on `127.0.0.1:8420`; serves the rendered reports and answers the in-page chatbot from the full local substrate + code grep. |
 | `relay_agent.py` | dials the Worker's `/agent` WebSocket and replays each relayed request against `:8420`. Also `relay_agent.py share <email>` to invite a viewer. |
 | `serve.py` | `ensure()` spawns the backend + relay on every render (idempotent, silent). |
@@ -131,7 +131,7 @@ Admins (in `ADMIN_EMAILS`) may open **any** `/<email>/<project>` and see all ope
 | `TRAINLINT_RELAY` | `1` | `0` disables the outbound relay |
 | `TRAINLINT_RELAY_URL` | `wss://secondfoundationlabs.com/agent` | which Worker to dial |
 | `TRAINLINT_SERVE_PORT` | `8420` | local backend port |
-| `TRAINLINT_REPORT_LLM` | `codex` | LLM backend for report prose (`kimi`/`gemini`/`claude`) |
+| `TRAINLINT_REPORT_LLM` | `kimi` | LLM backend for report prose (`codex`/`gemini`/`claude`) |
 | `TRAINLINT_SLIDES_LLM` | (falls back to `TRAINLINT_REPORT_LLM`) | LLM backend that authors the slide deck |
 
 ---

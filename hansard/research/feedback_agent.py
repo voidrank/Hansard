@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Agentic digest — one headless Claude Code agent per operator-feedback item.
 
-The lightweight digest (feedback.py) makes ONE batched codex call to classify all feedback into
+The lightweight digest (feedback.py) makes ONE batched LLM call (default kimi) to classify all feedback into
 confusion/correction/readability. This module is the heavyweight alternative the report's "Deal
 with all requests" button can drive: it spawns ONE read-only Claude Code agent per NEW feedback
 item, each of which INVESTIGATES the real project code + the report substrate (grounded in
@@ -153,7 +153,15 @@ RETURN — your FINAL message must be ONLY this JSON (no prose, no code fence), 
   "evidence": ["file:line", "..."],
   "confidence": "high|medium|low"
 }}
-Only include glossary_add for genuine CONFUSION gaps (empty list otherwise). Keep proposal focused."""
+Only include glossary_add for genuine CONFUSION gaps (empty list otherwise). Keep proposal focused.
+
+WHO READS WHAT — two audiences, two registers:
+- `change_summary` and `diagnosis` are shown to the OPERATOR on the report surface. Write them in
+  the OPERATOR'S OWN LANGUAGE (match the language of their note — Chinese note, Chinese answer),
+  in plain words a non-engineer reads in one pass. `change_summary` answers their note directly:
+  for a confusion it IS the plain answer to their question; for a correction/readability it says
+  WHAT will change as the reader will see it. NO file:line in change_summary — grounding lives
+  in `evidence` and `proposal`, which are the audit layer and stay technical (any language)."""
 
 
 def _parse_result(transcript_path):

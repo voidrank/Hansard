@@ -100,7 +100,7 @@ MEMTAIL = ("\nIf the exchange clarified a concept the user didn't know, append A
 
 def answer(project, question, decision_id=None, history=None, provider=None, focus_text=None):
     import os
-    provider = provider or os.environ.get("HANSARD_CHAT_LLM") or os.environ.get("TRAINLINT_CHAT_LLM") or os.environ.get("HANSARD_REPORT_LLM") or os.environ.get("TRAINLINT_REPORT_LLM") or "codex"
+    provider = provider or os.environ.get("HANSARD_CHAT_LLM") or os.environ.get("TRAINLINT_CHAT_LLM") or os.environ.get("HANSARD_REPORT_LLM") or os.environ.get("TRAINLINT_REPORT_LLM") or "kimi"
     sysp = ("You are a tutor embedded in the live report for a research project. Answer the user's "
             "question grounded ONLY in the context below (the current full project substrate + grepped "
             "code/data). Be concrete, cite file:line or the decision id when relevant, define jargon "
@@ -511,7 +511,7 @@ def start_digest(project):
             env["PATH"] = lb + ":" + env.get("PATH", "/usr/local/bin:/usr/bin:/bin")
         # Two digest engines. AGENTIC (default): one read-only Claude Code agent per feedback item
         # (feedback_agent.py) — investigates the real code, proposes; a deterministic serial applier
-        # lands the safe part. Needs a specific project. CLASSIC: the cheap one-shot codex classify
+        # lands the safe part. Needs a specific project. CLASSIC: the cheap one-shot classify (default kimi)
         # (viz.py --digest), also the fallback when no project is named. TRAINLINT_DIGEST_MODE=classic
         # forces the cheap path.
         mode = env.get("HANSARD_DIGEST_MODE") or env.get("TRAINLINT_DIGEST_MODE", "agentic").strip().lower()

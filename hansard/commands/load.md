@@ -74,6 +74,15 @@ source file classified, its entries written, then the next — never accumulate 
 big write at the end; keep ids kebab-case; skip an item that is pure conversation-local trivia
 (say you skipped it).
 
+**Human-facing prose is drafted by kimi, not you.** The operator's standing rule: everything a
+human will READ (skill `title`/`when`/`how` wording, knowledge `title`/`problem`, glossary
+`plain`/`why`) is written by the kimi CLI; you (claude/codex) do the WORK — reading sources,
+judging buckets, picking `match` keywords and ids, verifying the draft against the source.
+Batch it: one kimi call per source file with the classified raw material —
+`kimi --print -y --output-format stream-json -p "<drafting instructions>\n\n<material>"`
+(the same recipe `viz._llm('kimi', …)` uses) — then fix anything kimi got structurally wrong
+before writing the entries. If kimi is unavailable, draft inline and SAY the fallback happened.
+
 ## 4. Stamp the manifest, report
 
 When the (sub)set is ingested, run `python3 "${CLAUDE_PLUGIN_ROOT}/research/load.py" mark <name>`
